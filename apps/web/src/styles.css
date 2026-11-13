@@ -49,11 +49,10 @@ body { background: var(--bg); color: var(--text); font-family: Inter, system-ui,
 .badge { position: absolute; top: -6px; right: 12px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
 .badge.error { background: var(--err); } .badge.warning { background: var(--warn); }
 
-.group-vpc { border: 1.5px solid #8c4fff; background: color-mix(in srgb, #8c4fff 5%, transparent); border-radius: 14px; width: 100%; height: 100%; position: relative; }
+.group-vpc { border: 1.5px solid #8c4fff; background: transparent; border-radius: 14px; width: 100%; height: 100%; position: relative; }
 .group-vpc.selected { box-shadow: 0 0 0 2px var(--accent); }
-.group-tier { position: absolute; left: 12px; right: 12px; border-radius: 10px; border: 1.5px dashed; pointer-events: none; }
-.group-tier span { position: absolute; top: 6px; left: 10px; font-size: 10px; font-weight: 600; letter-spacing: .04em; display: flex; align-items: center; gap: 5px; }
-.group-tier img { width: 14px; height: 14px; }
+.group-tier { position: absolute; left: 14px; right: 14px; border-radius: 8px; border: 1.5px solid; pointer-events: none; }
+.group-tier span { position: absolute; top: 0; left: 40px; height: 30px; display: flex; align-items: center; font-size: 12px; font-weight: 500; color: var(--text); }
 
 .monaco-editor, .monaco-editor-background { --vscode-editor-background: transparent; }
 

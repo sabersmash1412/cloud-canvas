@@ -4,9 +4,9 @@ import { LANE_H, LANE_Y } from '../store';
 
 const W = 96, H = 108, TILE = 56;
 const TIERS = [
-  { key: 'public', color: '#7aa116', label: 'PUBLIC SUBNETS' },
-  { key: 'private', color: '#00a4a6', label: 'PRIVATE SUBNETS' },
-  { key: 'database', color: '#3b48cc', label: 'DATABASE SUBNETS' },
+  { key: 'public', color: '#7aa116', label: 'Public subnets', icon: 'public-subnet' },
+  { key: 'private', color: '#00a4a6', label: 'Private subnets', icon: 'private-subnet' },
+  { key: 'database', color: '#00a4a6', label: 'Database subnets', icon: 'private-subnet' },
 ];
 
 /** Static, dependency-free rendering of a graph. Used for dashboard thumbnails and the template preview. */
@@ -56,14 +56,16 @@ export function DiagramSVG({ graph, detail }: { graph: Graph; detail: 'mini' | '
         const a = abs(n), w = n.size?.w ?? 880, h = n.size?.h ?? 540;
         return (
           <g key={n.id}>
-            <rect x={a.x} y={a.y} width={w} height={h} rx={14} fill="#8c4fff" fillOpacity={0.05} stroke="#8c4fff" strokeWidth={sw} />
+            <rect x={a.x} y={a.y} width={w} height={h} rx={14} fill="none" stroke="#8c4fff" strokeWidth={sw} />
             {TIERS.map((t) => (
               <g key={t.key}>
-                <rect x={a.x + 12} y={a.y + LANE_Y[t.key]} width={w - 24} height={LANE_H} rx={10} fill={t.color} fillOpacity={0.06} stroke={t.color} strokeOpacity={0.6} strokeWidth={sw * 0.8} strokeDasharray="7 5" />
-                {full && <text x={a.x + 24} y={a.y + LANE_Y[t.key] + 18} fontSize={11} fontWeight={600} fill={t.color} letterSpacing=".04em">{t.label}</text>}
+                <rect x={a.x + 14} y={a.y + LANE_Y[t.key]} width={w - 28} height={LANE_H} rx={8} fill={t.color} fillOpacity={0.09} stroke={t.color} strokeWidth={sw} />
+                <image href={`/aws-icons/${t.icon}.svg`} x={a.x + 14} y={a.y + LANE_Y[t.key]} width={30} height={30} />
+                {full && <text x={a.x + 54} y={a.y + LANE_Y[t.key] + 20} fontSize={12} fontWeight={500} fill="var(--text)">{t.label}</text>}
               </g>
             ))}
-            {full && <text x={a.x + 16} y={a.y + 32} fontSize={13} fontWeight={600} fill="#8c4fff">VPC · {String(n.properties.name)}  <tspan fill="var(--muted)" fontWeight={400}>{String(n.properties.cidr)}</tspan></text>}
+            <image href="/aws-icons/virtual-private-cloud-vpc.svg" x={a.x} y={a.y} width={40} height={40} />
+            {full && <text x={a.x + 50} y={a.y + 25} fontSize={13} fontWeight={600} fill="var(--text)">VPC  <tspan fill="var(--muted)" fontWeight={400}>{String(n.properties.name)}  {String(n.properties.cidr)}</tspan></text>}
           </g>
         );
       })}
