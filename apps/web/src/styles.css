@@ -4,9 +4,11 @@
   --bg: #f6f7fb; --panel: #ffffff; --panel-2: #f1f3f9; --line: #e3e6ef; --text: #161a2b; --muted: #6b7390;
   --accent: #6d5dfc; --accent-soft: #ece9ff; --grid: #d9dce8; --shadow: 0 1px 2px rgba(20,24,50,.06), 0 8px 28px rgba(20,24,50,.08);
   --err: #e5484d; --warn: #f5a524; --ok: #30a46c;
+  --str: #b5651d; --num: #6b7390; --bool: #2f7fd1;
 }
 :root.dark {
   --bg: #0c0e17; --panel: #141726; --panel-2: #1a1e30; --line: #262b42; --text: #e8eaf6; --muted: #8189a8;
+  --str: #e0a070; --num: #a0a8c4; --bool: #6cb0ff;
   --accent: #8b7dff; --accent-soft: #24214d; --grid: #1e2236; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 32px rgba(0,0,0,.45);
 }
 html, body, #root { height: 100%; margin: 0; }
@@ -61,3 +63,18 @@ body { background: var(--bg); color: var(--text); font-family: Inter, system-ui,
 .empty-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .spin { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.cc-gear { background: no-repeat center / 14px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b7dff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E"); cursor: pointer; opacity: .75; }
+.cc-gear:hover { opacity: 1; }
+.rcard { border: 1.5px solid var(--line); border-radius: 12px; background: var(--panel); transition: border-color .15s, box-shadow .15s; }
+.rcard:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.rcard.sel { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.tabbtn { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; font-weight: 500; color: var(--muted); }
+.tabbtn.on { background: var(--accent-soft); color: var(--accent); }
+.tabbtn:hover:not(.on) { background: var(--panel-2); }
+.chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 1px 8px 1px 4px; border-radius: 7px; background: var(--accent-soft); color: var(--accent); font-weight: 500; cursor: pointer; border: 0; font-size: 12px; }
+.chip:hover { filter: brightness(1.1); }
+.chip img { width: 16px; height: 16px; border-radius: 4px; }
+.resize-h { position: absolute; left: -7px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 5; }
+.resize-h::after { content: ''; position: absolute; left: 3px; top: 50%; height: 36px; width: 3px; margin-top: -18px; border-radius: 2px; background: var(--line); transition: background .15s; }
+.resize-h:hover::after { background: var(--accent); }

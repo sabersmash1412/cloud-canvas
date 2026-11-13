@@ -22,6 +22,9 @@ export function quote(s: string): string {
   );
 }
 
+/** Render any value as HCL text (multi-line for objects), without a key. */
+export const fmtValue = (v: HclValue, indent = ''): string => fmt(v, indent);
+
 const isScalar = (v: HclValue) => v === null || typeof v !== 'object' || v instanceof Raw;
 
 function fmt(v: HclValue, indent: string): string {

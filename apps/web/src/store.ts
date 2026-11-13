@@ -318,7 +318,11 @@ export const useStore = create<State>((set, get) => ({
       ...((lastProp = `${id}.${key}`), {}),
     })),
 
-  select: (selected) => set({ selected }),
+  select: (selected) =>
+    set((s) => {
+      const dirty = s.nodes.some((n) => !!n.selected !== (n.id === selected));
+      return { selected, ...(dirty ? { nodes: s.nodes.map((n) => (!!n.selected === (n.id === selected) ? n : { ...n, selected: n.id === selected })) } : {}) };
+    }),
   setConnecting: (connectingFrom) => set({ connectingFrom }),
 
   undo: () => { const s = get(); const p = s.past.at(-1); if (!p) return; set({ ...p, past: s.past.slice(0, -1), future: [snapOf(s), ...s.future], selected: null }); lastProp = ''; },

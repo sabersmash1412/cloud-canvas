@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Background, BackgroundVariant, ConnectionMode, Controls, MarkerType, MiniMap, ReactFlow, ReactFlowProvider, useReactFlow, type Connection, type OnConnectStart } from '@xyflow/react';
-import { ArrowLeft, Check, Cloud, Code2, Download, FileUp, LayoutTemplate, Loader2, Moon, PanelLeft, Redo2, Save, Sun, Trash2, Undo2 } from 'lucide-react';
+import { ArrowLeft, Check, Cloud, Download, FileUp, Loader2, Moon, PanelRight, Redo2, Save, Sun, Trash2, Undo2 } from 'lucide-react';
 import { zipSync, strToU8 } from 'fflate';
 import { AnimatePresence, motion } from 'framer-motion';
 import { CATALOG, edgeRule } from '@cloudcanvas/compiler';
@@ -9,8 +9,7 @@ import { useCompile } from './useCompile';
 import { ResourceNode, SubnetNode, VpcNode } from './components/nodes';
 import { CCEdge } from './components/edge';
 import { Palette } from './components/Palette';
-import { Inspector } from './components/Inspector';
-import { CodePanel } from './components/CodePanel';
+import { SidePanel } from './components/SidePanel';
 import { buildTemplate } from '@cloudcanvas/compiler';
 import { repo, type Project } from './projects';
 import { goHome, useRoute } from './router';
@@ -108,7 +107,6 @@ function Canvas() {
           </motion.div>
         </div>
       )}
-      <Inspector />
       <Toast />
     </div>
   );
@@ -116,10 +114,11 @@ function Canvas() {
 
 function Editor({ project: proj }: { project: Project }) {
   const result = useCompile();
-  const { project, setProject, dark, toggleDark, view, setView, undo, redo, load, clear, past, future, nodes, edges } = useStore();
+  const { project, setProject, dark, toggleDark, undo, redo, load, clear, past, future, nodes, edges } = useStore();
   const { fitView } = useReactFlow();
   const file = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState(proj.name);
+  const [panel, setPanel] = useState(true);
   const [saved, setSaved] = useState<'saved' | 'saving'>('saved');
   const base = useRef<{ nodes: unknown; edges: unknown; project: unknown } | null>(null);
 
@@ -181,11 +180,7 @@ function Editor({ project: proj }: { project: Project }) {
           {['ap-southeast-1', 'ap-southeast-2', 'us-east-1', 'eu-west-1'].map((x) => <option key={x}>{x}</option>)}
         </select>
         <div style={{ flex: 1 }} />
-        <div style={{ display: 'flex', background: 'var(--panel-2)', borderRadius: 10, padding: 3 }}>
-          {([['canvas', PanelLeft, 'Canvas'], ['split', LayoutTemplate, 'Split'], ['code', Code2, 'Code']] as const).map(([v, I, l]) => (
-            <button key={v} onClick={() => setView(v)} style={{ all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 8, fontWeight: 500, background: view === v ? 'var(--panel)' : 'transparent', boxShadow: view === v ? 'var(--shadow)' : 'none', color: view === v ? 'var(--text)' : 'var(--muted)' }}><I size={13} />{l}</button>
-          ))}
-        </div>
+        <button className="btn icon" data-testid="toggle-panel" title={panel ? 'Hide panel' : 'Show panel'} onClick={() => setPanel(!panel)}><PanelRight size={15} /></button>
         <button className="btn icon" title="Undo (⌘Z)" disabled={!past.length} onClick={undo}><Undo2 size={15} /></button>
         <button className="btn icon" title="Redo (⌘⇧Z)" disabled={!future.length} onClick={redo}><Redo2 size={15} /></button>
         <button className="btn icon" title="Clear canvas" disabled={!nodes.length} onClick={clear}><Trash2 size={15} /></button>
@@ -196,9 +191,9 @@ function Editor({ project: proj }: { project: Project }) {
         <button className="btn primary" disabled={!result.ok || !nodes.length} onClick={exportZip}><Download size={14} /> Get code</button>
       </header>
       <div style={{ flex: 1, display: 'flex', gap: 12, minHeight: 0 }}>
-        {view !== 'code' && <Palette />}
-        {view !== 'code' && <Canvas />}
-        {view !== 'canvas' && <div style={{ display: 'flex', flex: view === 'code' ? 1 : 'none', width: view === 'code' ? undefined : 440, minWidth: 0 }}><CodePanel result={result} /></div>}
+        <Palette />
+        <Canvas />
+        {panel && <SidePanel result={result} />}
       </div>
     </div>
   );

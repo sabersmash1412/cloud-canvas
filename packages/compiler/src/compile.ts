@@ -1,8 +1,8 @@
 import { CATALOG, Ctx, Resolved, snake } from './catalog';
-import { printModule, quote, raw } from './hcl';
+import { fmtValue, printModule, quote, Raw, raw, type HclValue } from './hcl';
 import { pipelineYaml } from './pipeline';
 import { validateGraph } from './validate';
-import type { BlockRange, CompileResult, CompiledFile, Diagnostic, Graph } from './types';
+import type { BlockRange, CompileResult, CompiledFile, DetailInput, DetailRef, Diagnostic, Graph, NodeDetail } from './types';
 
 export const GENERATOR = 'cloud-canvas@0.1.0';
 const TYPE_ORDER = ['aws.vpc', 'aws.subnet', 'aws.acm', 'aws.s3', 'aws.dynamodb', 'aws.sqs', 'aws.sns', 'aws.rds_postgres', 'aws.rds_mysql', 'aws.ecs_fargate', 'aws.lambda', 'aws.alb', 'aws.apigw', 'aws.cloudfront', 'aws.route53_record'];
@@ -44,6 +44,7 @@ export function compile(g: Graph): CompileResult {
   let line = header.length;
 
   const sections: { nodeId: string; text: string }[] = [];
+  const built: { r: Resolved; res: ReturnType<Resolved['def']['build']> }[] = [];
   let needsUsEast1 = false;
 
   if (!hasError()) {
@@ -60,6 +61,7 @@ export function compile(g: Graph): CompileResult {
         warn: (message) => diagnostics.push({ severity: 'warning', nodeId: r.node.id, message }),
       };
       const res = r.def.build(ctx);
+      built.push({ r, res });
       if (res.usEast1) needsUsEast1 = true;
       const parts: string[] = [
         `# canvas:node id=${r.node.id} type=${r.node.type}\n` +
@@ -91,6 +93,46 @@ export function compile(g: Graph): CompileResult {
     : mainParts.join('\n') + '\n' + blocks.join('\n\n') + '\n';
   if (!hasError()) for (const r of ranges) { r.startLine += shift; r.endLine += shift; }
 
+  const details: Record<string, NodeDetail> = {};
+  if (!hasError()) {
+    // module label -> canvas node that owns it (incl. companion modules such as "<db>_sg")
+    const owner = new Map<string, string>();
+    for (const r of resolved.values()) owner.set(r.label, r.node.id);
+    for (const { r, res } of built) for (const x of res.extraModules ?? []) owner.set(x.label, r.node.id);
+
+    const refsIn = (v: HclValue, out: DetailRef[] = []): DetailRef[] => {
+      if (v instanceof Raw) {
+        for (const m of v.expr.matchAll(/module\.([A-Za-z0-9_]+)\.?([A-Za-z0-9_]*)/g)) {
+          const nodeId = owner.get(m[1]);
+          if (nodeId && !out.some((o) => o.nodeId === nodeId && o.attr === m[2])) out.push({ nodeId, label: m[1], attr: m[2] });
+        }
+      } else if (Array.isArray(v)) v.forEach((x) => refsIn(x, out));
+      else if (v && typeof v === 'object') Object.values(v).forEach((x) => refsIn(x, out));
+      return out;
+    };
+    const summarize = (key: string, v: HclValue): DetailInput => {
+      const refs = refsIn(v);
+      if (v === null) return { key, kind: 'null', text: 'null', refs };
+      if (v instanceof Raw) return { key, kind: /^module\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+$/.test(v.expr) ? 'ref' : 'expr', text: v.expr, refs };
+      if (typeof v === 'string') return { key, kind: 'string', text: v, refs };
+      if (typeof v === 'number') return { key, kind: 'number', text: String(v), refs };
+      if (typeof v === 'boolean') return { key, kind: 'boolean', text: String(v), refs };
+      return { key, kind: Array.isArray(v) ? 'list' : 'object', text: fmtValue(v), refs };
+    };
+    for (const { r, res } of built)
+      details[r.node.id] = {
+        moduleLabel: r.label,
+        source: r.def.module.source,
+        version: r.def.module.version,
+        inputs: Object.entries(res.inputs).filter(([, v]) => v !== undefined).map(([k, v]) => summarize(k, v)),
+        companions: (res.extraModules ?? []).map((x) => ({ label: x.label, source: x.source })),
+      };
+    for (const r of resolved.values()) {
+      if (!r.def.virtual || !r.node.parentId || !details[r.node.parentId]) continue;
+      details[r.node.id] = { ...details[r.node.parentId], virtual: true };
+    }
+  }
+
   const tagEntries: [string, string][] = [
     ['Project', g.project.name],
     ['Environment', g.project.environment],
@@ -109,7 +151,7 @@ export function compile(g: Graph): CompileResult {
     { path: 'versions.tf', language: 'hcl', content: versionsTf },
     { path: 'azure-pipelines.yml', language: 'yaml', content: pipelineYaml(g) },
   ];
-  return { files, blocks: ranges, diagnostics, ok: !hasError() };
+  return { files, blocks: ranges, details, diagnostics, ok: !hasError() };
 }
 
 const byLabel = (a: Resolved, b: Resolved) => a.label.localeCompare(b.label);

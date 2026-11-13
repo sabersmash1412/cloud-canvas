@@ -94,3 +94,31 @@ describe('subnets as nodes', () => {
     expect(migrateGraph(m)).toBe(m);
   });
 });
+
+describe('structured details', () => {
+  it('exposes module inputs and cross-node references per node', () => {
+    const r = compile(tpl('ecs-cluster'));
+    const api = r.details['svc'];
+    expect(api.source).toBe('terraform-aws-modules/ecs/aws');
+    const db = r.details['db'];
+    const sg = db.inputs.find((i) => i.key === 'vpc_security_group_ids')!;
+    expect(sg.refs.map((x) => x.nodeId)).toEqual(['db']); // companion module belongs to the db node
+    expect(db.companions).toHaveLength(1);
+    const sub = db.inputs.find((i) => i.key === 'db_subnet_group_name')!;
+    expect(sub.kind).toBe('ref');
+    expect(sub.refs[0]).toMatchObject({ nodeId: 'vpc1', attr: 'database_subnet_group_name' });
+    const alb = r.details['alb'].inputs.find((i) => i.key === 'vpc_id')!;
+    expect(alb.refs[0].nodeId).toBe('vpc1');
+    // services reference the ALB that routes to them
+    expect(r.details['svc'].inputs.find((i) => i.key === 'services')!.refs.some((x) => x.nodeId === 'alb')).toBe(true);
+  });
+  it('maps a subnet to its VPC module and marks it virtual', () => {
+    const r = compile(tpl('ecs-cluster'));
+    expect(r.details[subnetId('vpc1', 'private', 'a')]).toMatchObject({ virtual: true, moduleLabel: 'main' });
+  });
+  it('has no details when the graph has errors', () => {
+    const g = tpl('ecs-cluster');
+    g.nodes.find((n) => n.id === 'db')!.properties.dbName = '';
+    expect(compile(g).details).toEqual({});
+  });
+});
