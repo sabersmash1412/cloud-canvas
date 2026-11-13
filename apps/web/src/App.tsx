@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Background, BackgroundVariant, ConnectionMode, Controls, MarkerType, MiniMap, ReactFlow, ReactFlowProvider, useReactFlow, type Connection, type OnConnectStart } from '@xyflow/react';
-import { Cloud, Code2, Download, FileUp, LayoutTemplate, Moon, PanelLeft, Redo2, Save, Sun, Trash2, Undo2 } from 'lucide-react';
+import { ArrowLeft, Check, Cloud, Code2, Download, FileUp, LayoutTemplate, Loader2, Moon, PanelLeft, Redo2, Save, Sun, Trash2, Undo2 } from 'lucide-react';
 import { zipSync, strToU8 } from 'fflate';
 import { motion } from 'framer-motion';
 import { CATALOG, edgeRule } from '@cloudcanvas/compiler';
@@ -11,7 +11,10 @@ import { CCEdge } from './components/edge';
 import { Palette } from './components/Palette';
 import { Inspector } from './components/Inspector';
 import { CodePanel } from './components/CodePanel';
-import { SERVERLESS, THREE_TIER } from './templates';
+import { buildTemplate } from '@cloudcanvas/compiler';
+import { repo, type Project } from './projects';
+import { goHome, useRoute } from './router';
+import { Dashboard } from './components/Dashboard';
 
 const nodeTypes = { resource: ResourceNode, vpc: VpcNode };
 const edgeTypes = { cc: CCEdge };
@@ -95,22 +98,37 @@ function Canvas() {
   );
 }
 
-function Shell() {
+function Editor({ project: proj }: { project: Project }) {
   const result = useCompile();
   const { project, setProject, dark, toggleDark, view, setView, undo, redo, load, clear, past, future, nodes, edges } = useStore();
   const { fitView } = useReactFlow();
   const file = useRef<HTMLInputElement>(null);
+  const [title, setTitle] = useState(proj.name);
+  const [saved, setSaved] = useState<'saved' | 'saving'>('saved');
+  const ready = useRef(false);
+
+  // load the project graph once per project
+  useEffect(() => {
+    useStore.getState().openGraph(proj.graph);
+    ready.current = false;
+    const t = setTimeout(() => { ready.current = true; fitView({ duration: 0, padding: 0.12, maxZoom: 1 }); }, 120);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proj.id]);
+
+  // debounced autosave
+  useEffect(() => {
+    if (!ready.current) return;
+    setSaved('saving');
+    const t = setTimeout(async () => {
+      await repo.save({ ...proj, name: title.trim() || proj.name, graph: toGraph(nodes, edges, project) });
+      setSaved('saved');
+    }, 500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, edges, project, title]);
 
   useEffect(() => { document.documentElement.classList.toggle('dark', dark); }, [dark]);
-  useEffect(() => {
-    const q = new URLSearchParams(location.search);
-    const d = q.get('demo');
-    if (d === 'three') load(THREE_TIER); else if (d === 'sls') load(SERVERLESS);
-    if (q.get('theme')) { if ((q.get('theme') === 'dark') !== useStore.getState().dark) toggleDark(); }
-    if (q.get('select')) useStore.getState().select(q.get('select'));
-    if (d) setTimeout(() => fitView({ duration: 0, padding: 0.12, maxZoom: 1 }), 250);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
@@ -122,7 +140,7 @@ function Shell() {
     return () => window.removeEventListener('keydown', h);
   }, [undo, redo]);
 
-  const apply = (g: typeof THREE_TIER) => { load(g); setTimeout(() => fitView({ duration: 400, padding: 0.2, maxZoom: 1 }), 60); };
+  const apply = (g: ReturnType<typeof toGraph>) => { load(g); setTimeout(() => fitView({ duration: 400, padding: 0.2, maxZoom: 1 }), 60); };
   const exportZip = () => {
     const files: Record<string, Uint8Array> = { 'canvas.json': strToU8(JSON.stringify(toGraph(nodes, edges, project), null, 2)) };
     for (const f of result.files) files[`${project.name}/${f.path}`] = strToU8(f.content);
@@ -132,12 +150,12 @@ function Shell() {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 12, gap: 12 }}>
       <header className="panel" style={{ height: 52, display: 'flex', alignItems: 'center', gap: 14, padding: '0 14px', flex: 'none' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg,#8b7dff,#5b8cff)', display: 'grid', placeItems: 'center' }}><Cloud size={16} color="#fff" /></div>
-          Cloud Canvas
-        </div>
-        <span style={{ color: 'var(--line)' }}>/</span>
-        <input value={project.name} onChange={(e) => setProject({ name: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })} style={{ all: 'unset', fontWeight: 600, width: 130 }} />
+        <button className="btn icon" data-testid="back" title="All projects" onClick={goHome}><ArrowLeft size={15} /></button>
+        <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg,#8b7dff,#5b8cff)', display: 'grid', placeItems: 'center' }}><Cloud size={16} color="#fff" /></div>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={60} aria-label="Project name" style={{ all: 'unset', fontWeight: 600, width: Math.max(90, title.length * 8.5), maxWidth: 300 }} />
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--muted)', fontSize: 11.5 }}>
+          {saved === 'saving' ? <><Loader2 size={12} className="spin" /> Saving</> : <><Check size={12} /> Saved</>}
+        </span>
         <select value={project.environment} onChange={(e) => setProject({ environment: e.target.value })} className="btn" style={{ height: 28 }}>
           {['dev', 'uat', 'prod'].map((x) => <option key={x}>{x}</option>)}
         </select>
@@ -150,11 +168,6 @@ function Shell() {
             <button key={v} onClick={() => setView(v)} style={{ all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 8, fontWeight: 500, background: view === v ? 'var(--panel)' : 'transparent', boxShadow: view === v ? 'var(--shadow)' : 'none', color: view === v ? 'var(--text)' : 'var(--muted)' }}><I size={13} />{l}</button>
           ))}
         </div>
-        <select className="btn" value="" onChange={(e) => { if (e.target.value === 'three') apply(THREE_TIER); if (e.target.value === 'sls') apply(SERVERLESS); }}>
-          <option value="" disabled>Templates</option>
-          <option value="three">3-tier web app</option>
-          <option value="sls">Serverless API</option>
-        </select>
         <button className="btn icon" title="Undo (⌘Z)" disabled={!past.length} onClick={undo}><Undo2 size={15} /></button>
         <button className="btn icon" title="Redo (⌘⇧Z)" disabled={!future.length} onClick={redo}><Redo2 size={15} /></button>
         <button className="btn icon" title="Clear canvas" disabled={!nodes.length} onClick={clear}><Trash2 size={15} /></button>
@@ -173,10 +186,26 @@ function Shell() {
   );
 }
 
+function ProjectPage({ id }: { id: string }) {
+  const [proj, setProj] = useState<Project | null | undefined>(undefined);
+  useEffect(() => { repo.get(id).then((p) => setProj(p ?? null)); }, [id]);
+  if (proj === undefined) return null;
+  if (proj === null)
+    return (
+      <div style={{ height: '100%', display: 'grid', placeItems: 'center', textAlign: 'center' }}>
+        <div><div style={{ fontSize: 18, fontWeight: 600 }}>Project not found</div><p style={{ color: 'var(--muted)' }}>It may have been deleted, or it was created in another browser.</p><button className="btn primary" onClick={goHome}>Back to projects</button></div>
+      </div>
+    );
+  return <Editor key={proj.id} project={proj} />;
+}
+
 export function App() {
+  const route = useRoute();
+  const dark = useStore((s) => s.dark);
+  useEffect(() => { document.documentElement.classList.toggle('dark', dark); }, [dark]);
   return (
     <ReactFlowProvider>
-      <Shell />
+      {route.name === 'home' ? <Dashboard /> : <ProjectPage id={route.id} />}
     </ReactFlowProvider>
   );
 }

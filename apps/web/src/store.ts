@@ -32,6 +32,7 @@ interface State extends Snap {
   undo: () => void;
   redo: () => void;
   load: (g: Graph) => void;
+  openGraph: (g: Graph) => void;
   clear: () => void;
   toggleDark: () => void;
   setView: (v: State['view']) => void;
@@ -175,6 +176,7 @@ export const useStore = create<State>((set, get) => ({
   redo: () => { const s = get(); const f = s.future[0]; if (!f) return; set({ ...f, future: s.future.slice(1), past: [...s.past, snapOf(s)], selected: null }); lastProp = ''; },
 
   load: (g) => { const s = get(); const { nodes, edges } = fromGraph(g); set({ nodes, edges, project: g.project, selected: null, past: [...s.past.slice(-80), snapOf(s)], future: [] }); },
+  openGraph: (g) => { const { nodes, edges } = fromGraph(g); lastProp = ''; set({ nodes, edges, project: g.project, selected: null, past: [], future: [], diagnostics: [] }); },
   clear: () => { const s = get(); set({ nodes: [], edges: [], selected: null, past: [...s.past.slice(-80), snapOf(s)], future: [] }); },
 
   toggleDark: () => set((s) => { try { localStorage.setItem('cc-dark', s.dark ? '0' : '1'); } catch { /* ignore */ } return { dark: !s.dark }; }),

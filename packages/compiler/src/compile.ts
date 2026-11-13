@@ -5,7 +5,7 @@ import { validateGraph } from './validate';
 import type { BlockRange, CompileResult, CompiledFile, Diagnostic, Graph } from './types';
 
 export const GENERATOR = 'cloud-canvas@0.1.0';
-const TYPE_ORDER = ['aws.vpc', 'aws.acm', 'aws.s3', 'aws.dynamodb', 'aws.sqs', 'aws.sns', 'aws.rds_postgres', 'aws.ecs_fargate', 'aws.lambda', 'aws.alb', 'aws.apigw', 'aws.cloudfront'];
+const TYPE_ORDER = ['aws.vpc', 'aws.acm', 'aws.s3', 'aws.dynamodb', 'aws.sqs', 'aws.sns', 'aws.rds_postgres', 'aws.rds_mysql', 'aws.ecs_fargate', 'aws.lambda', 'aws.alb', 'aws.apigw', 'aws.cloudfront', 'aws.route53_record'];
 
 export function compile(g: Graph): CompileResult {
   const diagnostics: Diagnostic[] = validateGraph(g);
@@ -35,6 +35,7 @@ export function compile(g: Graph): CompileResult {
   let line = header.length;
 
   const sections: { nodeId: string; text: string }[] = [];
+  let needsUsEast1 = false;
 
   if (!hasError()) {
     for (const r of resolved.values()) {
@@ -49,9 +50,10 @@ export function compile(g: Graph): CompileResult {
         warn: (message) => diagnostics.push({ severity: 'warning', nodeId: r.node.id, message }),
       };
       const res = r.def.build(ctx);
+      if (res.usEast1) needsUsEast1 = true;
       const parts: string[] = [
         `# canvas:node id=${r.node.id} type=${r.node.type}\n` +
-          printModule({ name: r.label, source: r.def.module.source, version: r.def.module.version, inputs: res.inputs }),
+          printModule({ name: r.label, source: r.def.module.source, version: r.def.module.version, inputs: res.inputs, ...(res.usEast1 ? { providers: { aws: raw('aws.us_east_1') } } : {}) }),
       ];
       for (const x of res.extraModules ?? []) parts.push(printModule({ name: x.label, source: x.source, version: x.version, inputs: x.inputs }));
       for (const rb of res.rawBlocks ?? []) parts.push(rb);
@@ -85,8 +87,9 @@ export function compile(g: Graph): CompileResult {
   const tags = `locals {\n  mandatory_tags = {\n${tagEntries.map(([k, v]) => `    ${k.padEnd(w)} = ${quote(v)}`).join('\n')}\n  }\n}`;
   const provider = `provider "aws" {\n  region = ${quote(g.project.region)}\n\n  default_tags {\n    tags = local.mandatory_tags\n  }\n}`;
   const tfBlock = `terraform {\n  required_version = ">= 1.6.0"\n\n  required_providers {\n    aws = {\n      source  = "hashicorp/aws"\n      version = "~> 5.70"\n    }\n  }\n}`;
+  const alias = needsUsEast1 ? `\n\nprovider "aws" {\n  alias  = "us_east_1"\n  region = "us-east-1"\n\n  default_tags {\n    tags = local.mandatory_tags\n  }\n}` : '';
   const az = needsAz ? '\n\n' + printBlock('data', ['aws_availability_zones', 'available'], { state: 'available' }) : '';
-  const versionsTf = `${header[0]}\n\n${tfBlock}\n\n${provider}\n\n${tags}${az}\n`;
+  const versionsTf = `${header[0]}\n\n${tfBlock}\n\n${provider}${alias}\n\n${tags}${az}\n`;
 
   const files: CompiledFile[] = [
     { path: 'main.tf', language: 'hcl', content: mainTf },

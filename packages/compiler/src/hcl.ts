@@ -70,6 +70,7 @@ export interface ModuleBlock {
   source: string;
   version: string;
   inputs: Record<string, HclValue>;
+  providers?: Record<string, HclValue>;
 }
 
 export function printModule(m: ModuleBlock): string {
@@ -80,8 +81,9 @@ export function printModule(m: ModuleBlock): string {
     ],
     '  ',
   );
+  const prov = m.providers ? `\n\n${body([['providers', m.providers]], '  ')}` : '';
   const rest = Object.entries(m.inputs).filter(([, v]) => v !== undefined) as [string, HclValue][];
-  return `module ${quote(m.name)} {\n${head}${rest.length ? '\n\n' + body(rest, '  ') : ''}\n}`;
+  return `module ${quote(m.name)} {\n${head}${prov}${rest.length ? '\n\n' + body(rest, '  ') : ''}\n}`;
 }
 
 export function printBlock(type: string, labels: string[], attrs: Record<string, HclValue>): string {

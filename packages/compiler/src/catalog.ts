@@ -32,6 +32,8 @@ export interface ExtraModule {
 
 export interface BuildResult {
   inputs: Record<string, HclValue>;
+  /** needs the aws.us_east_1 provider alias (e.g. CloudFront certificates) */
+  usEast1?: boolean;
   extraModules?: ExtraModule[];
   rawBlocks?: string[];
 }
@@ -46,6 +48,8 @@ export interface NodeDef {
   container?: boolean;
   /** required parent node type, if any */
   parent?: string;
+  /** parent is allowed but not required (node can live outside the VPC) */
+  optionalParent?: boolean;
   tier?: Tier;
   module: { source: string; version: string };
   fields: FieldDef[];
@@ -110,6 +114,11 @@ function grants(c: Ctx): { actions: string[]; resources: HclValue[] }[] {
 export const EDGE_RULES: EdgeRule[] = [
   { source: 'aws.alb', target: 'aws.ecs_fargate', label: 'routes to' },
   { source: 'aws.ecs_fargate', target: 'aws.rds_postgres', label: 'connects to' },
+  { source: 'aws.ecs_fargate', target: 'aws.rds_mysql', label: 'connects to' },
+  { source: 'aws.lambda', target: 'aws.rds_postgres', label: 'connects to' },
+  { source: 'aws.lambda', target: 'aws.rds_mysql', label: 'connects to' },
+  { source: 'aws.route53_record', target: 'aws.cloudfront', label: 'aliases to' },
+  { source: 'aws.route53_record', target: 'aws.alb', label: 'aliases to' },
   { source: 'aws.ecs_fargate', target: 'aws.s3', label: 'reads/writes' },
   { source: 'aws.ecs_fargate', target: 'aws.sqs', label: 'sends/receives' },
   { source: 'aws.ecs_fargate', target: 'aws.sns', label: 'publishes' },
@@ -129,6 +138,88 @@ export const EDGE_RULES: EdgeRule[] = [
 
 export const edgeRule = (source: string, target: string) =>
   EDGE_RULES.find((r) => r.source === source && r.target === target);
+
+function rdsDef(engine: 'postgres' | 'mysql'): NodeDef {
+  const pg = engine === 'postgres';
+  const port = pg ? 5432 : 3306;
+  const pretty = pg ? 'PostgreSQL' : 'MySQL';
+  return {
+    type: pg ? 'aws.rds_postgres' : 'aws.rds_mysql',
+    label: `RDS ${pretty}`,
+    category: 'Database',
+    description: `Managed ${pretty} in database subnets with encryption, Secrets Manager credentials and a locked-down security group.`,
+    icon: 'amazon-rds',
+    color: '#3b48cc',
+    parent: 'aws.vpc',
+    tier: 'database',
+    module: { source: 'terraform-aws-modules/rds/aws', version: '~> 6.10' },
+    outputs: ['db_instance_endpoint', 'db_instance_master_user_secret_arn'],
+    fields: [
+      nameField('db'),
+      sel('engineVersion', 'Engine version', pg ? '16.4' : '8.0.40', pg ? ['14.13', '15.8', '16.4', '17.2'] : ['8.0.40', '8.4.3']),
+      sel('instanceClass', 'Instance class', 'db.t4g.medium', ['db.t4g.micro', 'db.t4g.medium', 'db.r6g.large', 'db.r6g.xlarge']),
+      n('storage', 'Storage (GiB)', 50, { min: 20, max: 65536 }),
+      s('dbName', 'Database name', 'app', { required: true, pattern: pg ? '^[a-zA-Z][a-zA-Z0-9_]{0,62}$' : '^[a-zA-Z][a-zA-Z0-9_]{0,63}$' }),
+      b('multiAz', 'Multi-AZ', true),
+      n('backupDays', 'Backup retention (days)', 7, { min: 1, max: 35 }),
+    ],
+    build(c) {
+      const v = c.vpc!;
+      const p = c.self.p;
+      const parts = String(p.engineVersion).split('.');
+      const major = pg ? parts[0] : parts.slice(0, 2).join('.');
+      const clients = [...c.incoming('aws.ecs_fargate'), ...c.incoming('aws.lambda')].sort((x, y) => x.label.localeCompare(y.label));
+      const sgLabel = `${c.self.label}_sg`;
+      if (!clients.length) c.warn('No application connected: the database security group will have no ingress rules.');
+      return {
+        extraModules: [
+          {
+            label: sgLabel,
+            source: 'terraform-aws-modules/security-group/aws',
+            version: '~> 5.2',
+            inputs: {
+              name: `${prefix(c)}-${p.name}-sg`,
+              description: `${pretty} access for ${p.name}`,
+              vpc_id: c.ref(v, 'vpc_id'),
+              ingress_with_source_security_group_id: clients.map((cl) => ({
+                from_port: port,
+                to_port: port,
+                protocol: 'tcp',
+                description: `From ${cl.p.name}`,
+                source_security_group_id:
+                  cl.node.type === 'aws.lambda'
+                    ? raw(`module.${cl.label}_sg.security_group_id`)
+                    : raw(`${c.ref(cl, 'services').expr}["${cl.label}"].security_group_id`),
+              })),
+            },
+          },
+        ],
+        inputs: {
+          identifier: `${prefix(c)}-${p.name}`,
+          engine: engine,
+          engine_version: String(p.engineVersion),
+          family: `${engine}${major}`,
+          major_engine_version: major,
+          instance_class: String(p.instanceClass),
+          allocated_storage: Number(p.storage),
+          db_name: String(p.dbName),
+          username: 'app_admin',
+          port,
+          manage_master_user_password: true,
+          multi_az: Boolean(p.multiAz),
+          storage_encrypted: true,
+          create_db_subnet_group: false,
+          db_subnet_group_name: c.ref(v, 'database_subnet_group_name'),
+          vpc_security_group_ids: [raw(`module.${sgLabel}.security_group_id`)],
+          backup_retention_period: Number(p.backupDays),
+          deletion_protection: isProd(c),
+          skip_final_snapshot: !isProd(c),
+          performance_insights_enabled: true,
+        },
+      };
+    },
+  };
+}
 
 const ALL: NodeDef[] = [
   // ───────────────────────── Networking ─────────────────────────
@@ -259,6 +350,38 @@ const ALL: NodeDef[] = [
   },
 
   {
+    type: 'aws.route53_record',
+    label: 'Route 53 Record',
+    category: 'Networking',
+    description: 'DNS alias record in an existing public hosted zone. Connect it to CloudFront or an ALB.',
+    icon: 'amazon-route-53',
+    color: '#8c4fff',
+    module: { source: 'terraform-aws-modules/route53/aws//modules/records', version: '~> 4.1' },
+    outputs: ['route53_record_fqdn'],
+    fields: [
+      nameField('dns'),
+      s('zoneName', 'Hosted zone', 'example.gov.sg', { required: true, pattern: '^[a-z0-9][a-z0-9.-]+\\.[a-z]{2,}$', help: 'Name of an existing public Route 53 zone.' }),
+      s('recordName', 'Record name', 'www', { help: 'Leave empty for the zone apex.' }),
+    ],
+    build(c) {
+      const cf = c.outgoing('aws.cloudfront')[0];
+      const alb = c.outgoing('aws.alb')[0];
+      if (!cf && !alb) c.warn('Connect a CloudFront distribution or an ALB as the alias target.');
+      const rn = String(c.self.p.recordName ?? '');
+      const rec = (type: string, alias: HclValue) => ({ name: rn, type, alias });
+      const records: Record<string, HclValue> = cf
+        ? {
+            a: rec('A', { name: c.ref(cf, 'cloudfront_distribution_domain_name'), zone_id: c.ref(cf, 'cloudfront_distribution_hosted_zone_id') }),
+            aaaa: rec('AAAA', { name: c.ref(cf, 'cloudfront_distribution_domain_name'), zone_id: c.ref(cf, 'cloudfront_distribution_hosted_zone_id') }),
+          }
+        : alb
+          ? { a: rec('A', { name: c.ref(alb, 'dns_name'), zone_id: c.ref(alb, 'zone_id'), evaluate_target_health: true }) }
+          : {};
+      return { inputs: { zone_name: String(c.self.p.zoneName), private_zone: false, records } };
+    },
+  },
+
+  {
     type: 'aws.acm',
     label: 'ACM Certificate',
     category: 'Edge & Security',
@@ -270,16 +393,21 @@ const ALL: NodeDef[] = [
     fields: [
       nameField('cert'),
       s('domainName', 'Domain name', 'app.example.gov.sg', { required: true, pattern: '^[a-z0-9*][a-z0-9.*-]+\\.[a-z]{2,}$' }),
-      s('zoneId', 'Route 53 zone ID', '', { help: 'Optional. When set, DNS validation records are created automatically.' }),
+      s('hostedZone', 'Route 53 hosted zone', '', { help: 'Optional zone name (e.g. example.gov.sg). When set, DNS validation records are created automatically.' }),
     ],
     build(c) {
-      const zone = String(c.self.p.zoneId);
+      const zone = String(c.self.p.hostedZone ?? '');
+      const dl = `${c.self.label}_zone`;
+      const forCdn = c.outgoing('aws.cloudfront').length > 0;
+      if (forCdn && c.outgoing('aws.alb').length) c.warn('A certificate used by CloudFront must live in us-east-1, so it cannot also serve a regional ALB. Use two certificates.');
       return {
+        usEast1: forCdn && c.project.region !== 'us-east-1',
         inputs: {
           domain_name: String(c.self.p.domainName),
           validation_method: 'DNS',
-          ...(zone ? { zone_id: zone, wait_for_validation: true } : { create_route53_records: false, validate_certificate: false }),
+          ...(zone ? { zone_id: raw(`data.aws_route53_zone.${dl}.zone_id`), wait_for_validation: true } : { create_route53_records: false, validate_certificate: false }),
         },
+        ...(zone ? { rawBlocks: [`data "aws_route53_zone" "${dl}" {\n  name         = ${JSON.stringify(zone)}\n  private_zone = false\n}`] } : {}),
       };
     },
   },
@@ -312,7 +440,6 @@ const ALL: NodeDef[] = [
         origin[t.label] = { domain_name: c.ref(t, 's3_bucket_bucket_regional_domain_name'), origin_access_control: t.label };
       const first = albs[0] ?? buckets[0];
       if (!first) c.warn('Connect an ALB or S3 bucket as the origin.');
-      if (cert && c.project.region !== 'us-east-1') c.warn('CloudFront certificates must be issued in us-east-1; add a provider alias for the ACM module.');
       const isAlb = !!albs[0];
       return {
         inputs: {
@@ -433,9 +560,12 @@ const ALL: NodeDef[] = [
     type: 'aws.lambda',
     label: 'Lambda Function',
     category: 'Compute',
-    description: 'Serverless function. Wire it to API Gateway, SQS triggers and data stores; IAM permissions are generated from the edges.',
+    description: 'Serverless function. Wire it to API Gateway, SQS triggers and data stores; IAM permissions are generated from the edges. Drop it inside a VPC to attach it to the private subnets (required to reach RDS).',
     icon: 'aws-lambda',
     color: '#ed7100',
+    parent: 'aws.vpc',
+    optionalParent: true,
+    tier: 'private',
     module: { source: 'terraform-aws-modules/lambda/aws', version: '~> 7.14' },
     outputs: ['lambda_function_arn', 'lambda_function_name'],
     fields: [
@@ -459,7 +589,26 @@ const ALL: NodeDef[] = [
           actions: ['sqs:ReceiveMessage', 'sqs:DeleteMessage', 'sqs:GetQueueAttributes'],
           resources: [c.ref(q, 'queue_arn')],
         };
+      const v = c.vpc;
+      const sgLabel = `${c.self.label}_sg`;
       return {
+        ...(v
+          ? {
+              extraModules: [
+                {
+                  label: sgLabel,
+                  source: 'terraform-aws-modules/security-group/aws',
+                  version: '~> 5.2',
+                  inputs: {
+                    name: `${prefix(c)}-${p.name}-sg`,
+                    description: `Egress for ${p.name} Lambda`,
+                    vpc_id: c.ref(v, 'vpc_id'),
+                    egress_rules: ['all-all'],
+                  },
+                },
+              ],
+            }
+          : {}),
         inputs: {
           function_name: `${prefix(c)}-${p.name}`,
           handler: String(p.handler),
@@ -468,6 +617,13 @@ const ALL: NodeDef[] = [
           timeout: Number(p.timeout),
           source_path: String(p.sourcePath),
           tracing_mode: 'Active',
+          ...(v
+            ? {
+                vpc_subnet_ids: c.ref(v, 'private_subnets'),
+                vpc_security_group_ids: [raw(`module.${sgLabel}.security_group_id`)],
+                attach_network_policy: true,
+              }
+            : {}),
           ...(Object.keys(stmts).length ? { attach_policy_statements: true, policy_statements: stmts } : {}),
           ...(sqsIn.length
             ? { event_source_mapping: Object.fromEntries(sqsIn.map((q) => [q.label, { event_source_arn: c.ref(q, 'queue_arn'), batch_size: 10 }])) }
@@ -485,78 +641,8 @@ const ALL: NodeDef[] = [
   },
 
   // ───────────────────────── Database ─────────────────────────
-  {
-    type: 'aws.rds_postgres',
-    label: 'RDS PostgreSQL',
-    category: 'Database',
-    description: 'Managed PostgreSQL in database subnets with encryption, Secrets Manager credentials and a locked-down security group.',
-    icon: 'amazon-rds',
-    color: '#3b48cc',
-    parent: 'aws.vpc',
-    tier: 'database',
-    module: { source: 'terraform-aws-modules/rds/aws', version: '~> 6.10' },
-    outputs: ['db_instance_endpoint', 'db_instance_master_user_secret_arn'],
-    fields: [
-      nameField('db'),
-      sel('engineVersion', 'Engine version', '16.4', ['14.13', '15.8', '16.4', '17.2']),
-      sel('instanceClass', 'Instance class', 'db.t4g.medium', ['db.t4g.micro', 'db.t4g.medium', 'db.r6g.large', 'db.r6g.xlarge']),
-      n('storage', 'Storage (GiB)', 50, { min: 20, max: 65536 }),
-      s('dbName', 'Database name', 'app', { required: true, pattern: '^[a-zA-Z][a-zA-Z0-9_]{0,62}$' }),
-      b('multiAz', 'Multi-AZ', true),
-      n('backupDays', 'Backup retention (days)', 7, { min: 1, max: 35 }),
-    ],
-    build(c) {
-      const v = c.vpc!;
-      const p = c.self.p;
-      const major = String(p.engineVersion).split('.')[0];
-      const clients = c.incoming('aws.ecs_fargate');
-      const sgLabel = `${c.self.label}_sg`;
-      if (!clients.length) c.warn('No application connected: the database security group will have no ingress rules.');
-      return {
-        extraModules: [
-          {
-            label: sgLabel,
-            source: 'terraform-aws-modules/security-group/aws',
-            version: '~> 5.2',
-            inputs: {
-              name: `${prefix(c)}-${p.name}-sg`,
-              description: `PostgreSQL access for ${p.name}`,
-              vpc_id: c.ref(v, 'vpc_id'),
-              ingress_with_source_security_group_id: clients.map((cl) => ({
-                from_port: 5432,
-                to_port: 5432,
-                protocol: 'tcp',
-                description: `From ${cl.p.name}`,
-                source_security_group_id: raw(`${c.ref(cl, 'services').expr}["${cl.label}"].security_group_id`),
-              })),
-            },
-          },
-        ],
-        inputs: {
-          identifier: `${prefix(c)}-${p.name}`,
-          engine: 'postgres',
-          engine_version: String(p.engineVersion),
-          family: `postgres${major}`,
-          major_engine_version: major,
-          instance_class: String(p.instanceClass),
-          allocated_storage: Number(p.storage),
-          db_name: String(p.dbName),
-          username: 'app_admin',
-          port: 5432,
-          manage_master_user_password: true,
-          multi_az: Boolean(p.multiAz),
-          storage_encrypted: true,
-          create_db_subnet_group: false,
-          db_subnet_group_name: c.ref(v, 'database_subnet_group_name'),
-          vpc_security_group_ids: [raw(`module.${sgLabel}.security_group_id`)],
-          backup_retention_period: Number(p.backupDays),
-          deletion_protection: isProd(c),
-          skip_final_snapshot: !isProd(c),
-          performance_insights_enabled: true,
-        },
-      };
-    },
-  },
+  rdsDef('postgres'),
+  rdsDef('mysql'),
 
   {
     type: 'aws.dynamodb',

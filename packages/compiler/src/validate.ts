@@ -29,7 +29,7 @@ export function validateGraph(g: Graph): Diagnostic[] {
       const m = checkField(f, n.properties[f.key]);
       if (m) out.push({ severity: 'error', nodeId: n.id, message: m });
     }
-    if (def.parent) {
+    if (def.parent && !(def.optionalParent && !n.parentId)) {
       const p = n.parentId ? byId.get(n.parentId) : undefined;
       if (!p || p.type !== def.parent) out.push({ severity: 'error', nodeId: n.id, message: `${def.label} must be placed inside a ${CATALOG[def.parent].label}` });
     }
@@ -48,6 +48,8 @@ export function validateGraph(g: Graph): Diagnostic[] {
     }
     if (!edgeRule(s.type, t.type))
       out.push({ severity: 'error', edgeId: e.id, nodeId: s.id, message: `${CATALOG[s.type]?.label ?? s.type} cannot connect to ${CATALOG[t.type]?.label ?? t.type}` });
+    if (s.type === 'aws.lambda' && t.type.startsWith('aws.rds_') && !s.parentId)
+      out.push({ severity: 'error', edgeId: e.id, nodeId: s.id, message: 'Place this Lambda inside the VPC so it can reach the database' });
     const k = `${e.source}>${e.target}`;
     if (seen.has(k)) out.push({ severity: 'warning', edgeId: e.id, message: 'Duplicate connection' });
     seen.add(k);
