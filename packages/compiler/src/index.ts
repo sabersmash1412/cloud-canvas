@@ -5,3 +5,5 @@ export * from './validate';
 export { raw, quote } from './hcl';
 export { pipelineYaml } from './pipeline';
 export * from './templates';
+export * from './layout';
+export { parseCidr } from './cidr';

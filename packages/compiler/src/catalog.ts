@@ -19,6 +19,8 @@ export interface Ctx {
   incoming: (type: string) => Resolved[];
   /** nodes this node points TO, filtered by type */
   outgoing: (type: string) => Resolved[];
+  /** nodes nested directly inside this one */
+  children: (type: string) => Resolved[];
   ref: (r: Resolved, attr: string) => Raw;
   warn: (msg: string) => void;
 }
@@ -51,12 +53,20 @@ export interface NodeDef {
   /** parent is allowed but not required (node can live outside the VPC) */
   optionalParent?: boolean;
   tier?: Tier;
+  /** tiers this node may sit in, when it depends on its properties (e.g. internal ALB) */
+  tiersFor?: (p: Props) => Tier[];
+  /** minimum distinct availability zones the chosen tier must span */
+  minAzs?: number;
+  /** structural node: no module of its own, folded into its parent's module */
+  virtual?: boolean;
   module: { source: string; version: string };
   fields: FieldDef[];
   /** output names this node exposes to others (docs/UI only) */
   outputs: string[];
   build: (c: Ctx) => BuildResult;
 }
+
+export const tiersOf = (d: NodeDef, p: Props): Tier[] => (d.tiersFor ? d.tiersFor(p) : d.tier ? [d.tier] : []);
 
 export interface EdgeRule {
   source: string;
@@ -150,8 +160,9 @@ function rdsDef(engine: 'postgres' | 'mysql'): NodeDef {
     description: `Managed ${pretty} in database subnets with encryption, Secrets Manager credentials and a locked-down security group.`,
     icon: 'amazon-rds',
     color: '#3b48cc',
-    parent: 'aws.vpc',
+    parent: 'aws.subnet',
     tier: 'database',
+    minAzs: 2,
     module: { source: 'terraform-aws-modules/rds/aws', version: '~> 6.10' },
     outputs: ['db_instance_endpoint', 'db_instance_master_user_secret_arn'],
     fields: [
@@ -227,7 +238,7 @@ const ALL: NodeDef[] = [
     type: 'aws.vpc',
     label: 'VPC',
     category: 'Networking',
-    description: 'Isolated virtual network with public, private and database subnets across availability zones, NAT and flow logs.',
+    description: 'Isolated virtual network. Add Subnet nodes (public, private, database) per availability zone; they become the module\'s subnet lists. Includes NAT and flow logs.',
     icon: 'virtual-private-cloud-vpc',
     color: '#8c4fff',
     container: true,
@@ -240,45 +251,74 @@ const ALL: NodeDef[] = [
         pattern: '^\\d{1,3}\\.\\d{1,3}\\.0\\.0/16$',
         help: 'Must be a /16. Subnets are carved out as /24s per tier.',
       }),
-      sel('azCount', 'Availability zones', 2, [2, 3]),
       sel('nat', 'NAT gateways', 'single', ['single', 'per-az'], { help: 'Per-AZ is more resilient but costs more.' }),
     ],
     build(c) {
       const cidr = String(c.self.p.cidr);
-      const az = Number(c.self.p.azCount);
-      const sub = (offset: number) => raw(`[for k in range(${az}) : cidrsubnet("${cidr}", 8, k + ${offset})]`);
-      return {
-        inputs: {
-          name: `${prefix(c)}-${c.self.p.name}`,
-          cidr,
-          azs: raw(`slice(data.aws_availability_zones.available.names, 0, ${az})`),
-          public_subnets: sub(0),
-          private_subnets: sub(10),
-          database_subnets: sub(20),
-          create_database_subnet_group: true,
-          enable_nat_gateway: true,
-          single_nat_gateway: c.self.p.nat === 'single',
-          one_nat_gateway_per_az: c.self.p.nat === 'per-az',
-          enable_dns_hostnames: true,
-          enable_flow_log: true,
-          create_flow_log_cloudwatch_log_group: true,
-          create_flow_log_cloudwatch_iam_role: true,
-          flow_log_max_aggregation_interval: 60,
-        },
+      const subs = c.children('aws.subnet');
+      const tier = (t: string) => subs.filter((x) => x.p.tier === t).sort((x, y) => String(x.p.az).localeCompare(String(y.p.az)));
+      const letters = [...new Set(subs.map((x) => String(x.p.az)))].sort();
+      if (!subs.length) c.warn('Add subnets to this VPC: drag a Subnet from the palette.');
+      const inputs: Record<string, HclValue> = {
+        name: `${prefix(c)}-${c.self.p.name}`,
+        cidr,
+        azs: (letters.length ? letters : ['a']).map((l) => `${c.project.region}${l}`),
       };
+      for (const t of ['public', 'private', 'database'] as const) {
+        const list = tier(t);
+        if (!list.length) continue;
+        inputs[`${t}_subnets`] = list.map((x) => String(x.p.cidr));
+        inputs[`${t}_subnet_names`] = list.map((x) => String(x.p.name));
+      }
+      const nat = tier('public').length > 0 && tier('private').length > 0;
+      Object.assign(inputs, {
+        create_database_subnet_group: tier('database').length > 0,
+        enable_nat_gateway: nat,
+        single_nat_gateway: nat && c.self.p.nat === 'single',
+        one_nat_gateway_per_az: nat && c.self.p.nat === 'per-az',
+        enable_dns_hostnames: true,
+        enable_flow_log: true,
+        create_flow_log_cloudwatch_log_group: true,
+        create_flow_log_cloudwatch_iam_role: true,
+        flow_log_max_aggregation_interval: 60,
+      });
+      return { inputs };
     },
   },
 
   // ───────────────────────── Edge & Security ─────────────────────────
   {
+    type: 'aws.subnet',
+    label: 'Subnet',
+    category: 'Networking',
+    description: 'A subnet in one availability zone. Services dropped into a subnet use every subnet of the same tier in the VPC. One subnet per tier per zone.',
+    icon: 'private-subnet',
+    color: '#00a4a6',
+    container: true,
+    parent: 'aws.vpc',
+    virtual: true,
+    module: { source: 'terraform-aws-modules/vpc/aws', version: '~> 5.13' },
+    outputs: [],
+    fields: [
+      nameField('private-a'),
+      sel('tier', 'Tier', 'private', ['public', 'private', 'database'], { help: 'Public subnets route to the internet gateway; private subnets use NAT; database subnets have no route out.' }),
+      sel('az', 'Availability zone', 'a', ['a', 'b', 'c']),
+      s('cidr', 'CIDR block', '10.20.10.0/24', { required: true, pattern: '^\\d{1,3}(\\.\\d{1,3}){3}/\\d{1,2}$', help: 'Between /16 and /28, inside the VPC range, not overlapping another subnet.' }),
+    ],
+    build: () => ({ inputs: {} }),
+  },
+
+  {
     type: 'aws.alb',
     label: 'Application Load Balancer',
     category: 'Networking',
-    description: 'Layer 7 load balancer. Connect it to ECS services to create target groups and listeners automatically.',
+    description: 'Layer 7 load balancer. Place it in a public subnet (or a private one when internal). Connect it to ECS services to create target groups and listeners automatically.',
     icon: 'elastic-load-balancing',
     color: '#8c4fff',
-    parent: 'aws.vpc',
+    parent: 'aws.subnet',
     tier: 'public',
+    tiersFor: (p) => (p.internal ? ['private'] : ['public']),
+    minAzs: 2,
     module: { source: 'terraform-aws-modules/alb/aws', version: '~> 9.11' },
     outputs: ['arn', 'dns_name', 'security_group_id', 'target_groups'],
     fields: [
@@ -488,7 +528,7 @@ const ALL: NodeDef[] = [
     description: 'Serverless container service: an ECS cluster plus one Fargate service in private subnets.',
     icon: 'aws-fargate',
     color: '#ed7100',
-    parent: 'aws.vpc',
+    parent: 'aws.subnet',
     tier: 'private',
     module: { source: 'terraform-aws-modules/ecs/aws', version: '~> 5.11' },
     outputs: ['cluster_arn', 'services'],
@@ -560,10 +600,10 @@ const ALL: NodeDef[] = [
     type: 'aws.lambda',
     label: 'Lambda Function',
     category: 'Compute',
-    description: 'Serverless function. Wire it to API Gateway, SQS triggers and data stores; IAM permissions are generated from the edges. Drop it inside a VPC to attach it to the private subnets (required to reach RDS).',
+    description: 'Serverless function. Wire it to API Gateway, SQS triggers and data stores; IAM permissions are generated from the edges. Drop it inside a private subnet to attach it to your VPC (required to reach RDS).',
     icon: 'aws-lambda',
     color: '#ed7100',
-    parent: 'aws.vpc',
+    parent: 'aws.subnet',
     optionalParent: true,
     tier: 'private',
     module: { source: 'terraform-aws-modules/lambda/aws', version: '~> 7.14' },

@@ -53,7 +53,7 @@ export function Palette() {
           <div>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{hover.def.label}</div>
             <div style={{ color: 'var(--muted)', lineHeight: 1.45, fontSize: 12 }}>{hover.def.description}</div>
-            {hover.def.parent && <div style={{ marginTop: 6, fontSize: 11, color: 'var(--accent)' }}>Placed in a VPC · {hover.def.tier} subnets</div>}
+            {hover.def.parent && <div style={{ marginTop: 6, fontSize: 11, color: 'var(--accent)' }}>{hover.def.parent === 'aws.subnet' ? `Lives in a ${hover.def.tier ? hover.def.tier + ' ' : ''}subnet${hover.def.optionalParent ? ' (optional)' : ''}` : 'Lives inside a VPC'}</div>}
           </div>
         </div>
       )}

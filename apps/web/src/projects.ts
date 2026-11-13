@@ -1,4 +1,4 @@
-import type { Graph } from '@cloudcanvas/compiler';
+import { migrateGraph, type Graph } from '@cloudcanvas/compiler';
 
 export interface Project {
   id: string;
@@ -22,7 +22,7 @@ const KEY = 'cc-projects-v1';
 function read(): Project[] {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) ?? '[]');
-    return Array.isArray(v) ? v : [];
+    return Array.isArray(v) ? v.map((p: Project) => ({ ...p, graph: migrateGraph(p.graph) })) : [];
   } catch {
     return [];
   }

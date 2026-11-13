@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react';
 import { CATALOG, edgeRule, type Diagnostic } from '@cloudcanvas/compiler';
-import { LANE_H, LANE_Y, useStore, type CNode } from '../store';
+import { useStore, type CNode } from '../store';
 
 const icon = (name: string) => `/aws-icons/${name}.svg`;
 
@@ -26,28 +26,30 @@ export const ResourceNode = memo(({ id, data, selected }: NodeProps<CNode>) => {
       <Badges id={id} />
       <Handle type="target" position={Position.Left} />
       <div className="tile"><img src={icon(def.icon)} alt="" draggable={false} /></div>
-      <div className="name">{String(data.properties.name)}</div>
       <div className="type">{def.label}</div>
       <Handle type="source" position={Position.Right} />
     </div>
   );
 });
 
-const TIERS: { key: string; label: string; color: string; icon: string }[] = [
-  { key: 'public', label: 'Public subnets', color: '#7aa116', icon: 'public-subnet' },
-  { key: 'private', label: 'Private subnets', color: '#00a4a6', icon: 'private-subnet' },
-  { key: 'database', label: 'Database subnets', color: '#00a4a6', icon: 'private-subnet' },
-];
+const tierColor = (tier: unknown) => (tier === 'public' ? '#7aa116' : '#00a4a6');
 
 /** AWS group style: solid coloured border, icon as a flush square tab in the top-left corner. */
 const Corner = ({ icon, size, radius }: { icon: string; size: number; radius: number }) => (
-  <img src={icon.startsWith('/') ? icon : `/aws-icons/${icon}.svg`} width={size} height={size} alt="" draggable={false}
+  <img src={`/aws-icons/${icon}.svg`} width={size} height={size} alt="" draggable={false}
     style={{ position: 'absolute', left: -1.5, top: -1.5, borderTopLeftRadius: radius, display: 'block' }} />
 );
 
+const resizer = (min: { w: number; h: number }) => ({
+  minWidth: min.w, minHeight: min.h,
+  lineStyle: { borderColor: 'var(--accent)' },
+  handleStyle: { background: 'var(--accent)', width: 8, height: 8, borderRadius: 3 },
+  onResizeStart: () => useStore.getState().checkpoint(),
+});
+
 export const VpcNode = memo(({ id, data, selected }: NodeProps<CNode>) => (
   <div className={`group-vpc ${selected ? 'selected' : ''}`}>
-    <NodeResizer isVisible={selected} minWidth={640} minHeight={540} lineStyle={{ borderColor: 'var(--accent)' }} handleStyle={{ background: 'var(--accent)', width: 8, height: 8, borderRadius: 3 }} />
+    <NodeResizer isVisible={selected} {...resizer({ w: 440, h: 220 })} />
     <Badges id={id} />
     <Corner icon="virtual-private-cloud-vpc" size={40} radius={13} />
     <div style={{ position: 'absolute', top: 0, left: 50, height: 40, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -55,13 +57,20 @@ export const VpcNode = memo(({ id, data, selected }: NodeProps<CNode>) => (
       <span style={{ fontSize: 12, color: 'var(--muted)' }}>{String(data.properties.name)}</span>
       <span className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{String(data.properties.cidr)}</span>
     </div>
-    {TIERS.map((t) => (
-      <div key={t.key} className="group-tier" style={{ top: LANE_Y[t.key], height: LANE_H, borderColor: t.color, background: `color-mix(in srgb, ${t.color} 9%, transparent)` }}>
-        <Corner icon={t.icon} size={30} radius={7} />
-        <span>{t.label}</span>
-      </div>
-    ))}
-    <Handle type="target" position={Position.Left} style={{ top: 20 }} />
-    <Handle type="source" position={Position.Right} style={{ top: 20 }} />
   </div>
 ));
+
+export const SubnetNode = memo(({ id, data, selected }: NodeProps<CNode>) => {
+  const color = tierColor(data.properties.tier);
+  return (
+    <div className={`group-subnet ${selected ? 'selected' : ''}`} style={{ borderColor: color, background: `color-mix(in srgb, ${color} 9%, transparent)` }}>
+      <NodeResizer isVisible={selected} {...resizer({ w: 200, h: 110 })} />
+      <Badges id={id} />
+      <Corner icon={data.properties.tier === 'public' ? 'public-subnet' : 'private-subnet'} size={30} radius={7} />
+      <div style={{ position: 'absolute', top: 0, left: 38, right: 8, height: 30, display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden', whiteSpace: 'nowrap' }}>
+        <b style={{ fontSize: 12, fontWeight: 500 }}>{String(data.properties.name)}</b>
+        <span className="mono" style={{ fontSize: 10.5, color: 'var(--muted)' }}>{String(data.properties.cidr)}</span>
+      </div>
+    </div>
+  );
+});

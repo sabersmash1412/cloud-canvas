@@ -1,4 +1,5 @@
-import type { Graph, GraphEdge, GraphNode, ProjectMeta, Props } from './types';
+import { inSubnetPos, subnetId, subnetNodes, vpcSize } from './layout';
+import type { Graph, GraphEdge, GraphNode, ProjectMeta, Props, Tier } from './types';
 
 export interface ProjectTemplate {
   id: string;
@@ -9,13 +10,13 @@ export interface ProjectTemplate {
   build: (project: ProjectMeta) => Graph;
 }
 
-const VPC = { w: 880, h: 540 };
-// y offsets of each subnet lane's content row inside the VPC (see LANE_Y in the web store)
-const Y = { public: 78, private: 238, database: 398 };
 
 type N = Omit<GraphNode, 'properties'> & { properties: Props };
-const vpc = (name = 'main'): N => ({ id: 'vpc1', type: 'aws.vpc', position: { x: 0, y: 0 }, size: VPC, properties: { name, cidr: '10.20.0.0/16', azCount: 2, nat: 'single' } });
-const inVpc = (id: string, type: string, x: number, tier: keyof typeof Y, properties: Props): N => ({ id, type, parentId: 'vpc1', position: { x, y: Y[tier] }, properties });
+const vpc = (name = 'main'): N[] => [
+  { id: 'vpc1', type: 'aws.vpc', position: { x: 0, y: 0 }, size: vpcSize(2), properties: { name, cidr: '10.20.0.0/16', nat: 'single' } },
+  ...subnetNodes('vpc1', '10.20.0.0/16', 2),
+];
+const inVpc = (id: string, type: string, tier: Tier, properties: Props): N => ({ id, type, parentId: subnetId('vpc1', tier, 'a'), position: inSubnetPos(), properties });
 const free = (id: string, type: string, x: number, y: number, properties: Props): N => ({ id, type, position: { x, y }, properties });
 const e = (source: string, target: string): GraphEdge => ({ id: `${source}-${target}`, source, target });
 const graph = (project: ProjectMeta, nodes: N[], edges: GraphEdge[]): Graph => ({ schemaVersion: '1.0.0', project, nodes, edges });
@@ -70,14 +71,14 @@ export const TEMPLATES: ProjectTemplate[] = [
     name: 'RDS for PostgreSQL with a secure network',
     description:
       'Deploy an AWS RDS for PostgreSQL instance within a secure, private database subnet of a multi-AZ VPC. The database has no public route; only the application tier can reach it through a dedicated security group.',
-    build: (p) => graph(p, [vpc(), inVpc('app', 'aws.ecs_fargate', 220, 'private', ecs('app')), inVpc('db', 'aws.rds_postgres', 420, 'database', pg())], [e('app', 'db')]),
+    build: (p) => graph(p, [...vpc(), inVpc('app', 'aws.ecs_fargate', 'private', ecs('app')), inVpc('db', 'aws.rds_postgres', 'database', pg())], [e('app', 'db')]),
   },
   {
     id: 'rds-mysql-secure',
     name: 'RDS for MySQL with a secure network',
     description:
       'Deploy an AWS RDS for MySQL instance within a secure, private database subnet of a multi-AZ VPC. Storage is encrypted, credentials live in Secrets Manager, and only the application tier is allowed in.',
-    build: (p) => graph(p, [vpc(), inVpc('app', 'aws.ecs_fargate', 220, 'private', ecs('app')), inVpc('db', 'aws.rds_mysql', 420, 'database', mysql())], [e('app', 'db')]),
+    build: (p) => graph(p, [...vpc(), inVpc('app', 'aws.ecs_fargate', 'private', ecs('app')), inVpc('db', 'aws.rds_mysql', 'database', mysql())], [e('app', 'db')]),
   },
   {
     id: 'serverless-api-mysql',
@@ -87,7 +88,7 @@ export const TEMPLATES: ProjectTemplate[] = [
     build: (p) =>
       graph(
         p,
-        [free('gw', 'aws.apigw', -300, 250, { name: 'api-gw', route: 'ANY /{proxy+}' }), vpc(), inVpc('fn', 'aws.lambda', 220, 'private', lambda('handler')), inVpc('db', 'aws.rds_mysql', 420, 'database', mysql())],
+        [free('gw', 'aws.apigw', -300, 280, { name: 'api-gw', route: 'ANY /{proxy+}' }), ...vpc(), inVpc('fn', 'aws.lambda', 'private', lambda('handler')), inVpc('db', 'aws.rds_mysql', 'database', mysql())],
         [e('gw', 'fn'), e('fn', 'db')],
       ),
   },
@@ -99,7 +100,7 @@ export const TEMPLATES: ProjectTemplate[] = [
     build: (p) =>
       graph(
         p,
-        [vpc(), inVpc('alb', 'aws.alb', 120, 'public', { name: 'web', internal: false, https: false, idleTimeout: 60 }), inVpc('svc', 'aws.ecs_fargate', 380, 'private', ecs('api')), inVpc('db', 'aws.rds_postgres', 620, 'database', pg()), free('q', 'aws.sqs', 960, 238, { name: 'jobs', fifo: false, visibility: 30, dlq: true })],
+        [...vpc(), inVpc('alb', 'aws.alb', 'public', { name: 'web', internal: false, https: false, idleTimeout: 60 }), inVpc('svc', 'aws.ecs_fargate', 'private', ecs('api')), inVpc('db', 'aws.rds_postgres', 'database', pg()), free('q', 'aws.sqs', 900, 238, { name: 'jobs', fifo: false, visibility: 30, dlq: true })],
         [e('alb', 'svc'), e('svc', 'db'), e('svc', 'q')],
       ),
   },

@@ -31,6 +31,6 @@ describe('compiler', () => {
   it('maps blocks to node line ranges', () => {
     const r = compile(load());
     const content = r.files[0].content.split('\n');
-    for (const b of r.blocks) expect(content[b.startLine - 1]).toBe(`# canvas:node id=${b.nodeId} type=${load().nodes.find((n) => n.id === b.nodeId)!.type}`);
+    for (const b of r.blocks.filter((x) => !x.nodeId.startsWith('vpc1-'))) expect(content[b.startLine - 1]).toBe(`# canvas:node id=${b.nodeId} type=${load().nodes.find((n) => n.id === b.nodeId)!.type}`);
   });
 });

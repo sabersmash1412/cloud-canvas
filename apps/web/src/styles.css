@@ -45,14 +45,14 @@ body { background: var(--bg); color: var(--text); font-family: Inter, system-ui,
 .cc-node.selected .tile { outline: 2.5px solid var(--accent); outline-offset: 3px; }
 .cc-node .tile img { width: 100%; height: 100%; display: block; pointer-events: none; }
 .cc-node .name { font-size: 11px; font-weight: 600; text-align: center; line-height: 1.2; max-width: 96px; }
-.cc-node .type { font-size: 10px; color: var(--muted); margin-top: -4px; }
+.cc-node .type { font-size: 10px; color: var(--muted); text-align: center; line-height: 1.2; max-width: 96px; }
 .badge { position: absolute; top: -6px; right: 12px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
 .badge.error { background: var(--err); } .badge.warning { background: var(--warn); }
 
 .group-vpc { border: 1.5px solid #8c4fff; background: transparent; border-radius: 14px; width: 100%; height: 100%; position: relative; }
 .group-vpc.selected { box-shadow: 0 0 0 2px var(--accent); }
-.group-tier { position: absolute; left: 14px; right: 14px; border-radius: 8px; border: 1.5px solid; pointer-events: none; }
-.group-tier span { position: absolute; top: 0; left: 40px; height: 30px; display: flex; align-items: center; font-size: 12px; font-weight: 500; color: var(--text); }
+.group-subnet { border: 1.5px solid; border-radius: 8px; width: 100%; height: 100%; position: relative; }
+.group-subnet.selected { box-shadow: 0 0 0 2px var(--accent); }
 
 .monaco-editor, .monaco-editor-background { --vscode-editor-background: transparent; }
 

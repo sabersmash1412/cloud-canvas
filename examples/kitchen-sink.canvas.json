@@ -1,37 +1,460 @@
 {
   "schemaVersion": "1.0.0",
-  "project": { "name": "sink", "squad": "platform", "environment": "dev", "region": "us-east-1" },
+  "project": {
+    "name": "sink",
+    "squad": "platform",
+    "environment": "dev",
+    "region": "us-east-1"
+  },
   "nodes": [
-    { "id": "vpc1", "type": "aws.vpc", "position": { "x": 0, "y": 0 }, "size": { "w": 900, "h": 540 }, "properties": { "name": "main", "cidr": "10.30.0.0/16", "azCount": 3, "nat": "per-az" } },
-    { "id": "alb1", "type": "aws.alb", "parentId": "vpc1", "position": { "x": 100, "y": 78 }, "properties": { "name": "web", "internal": false, "https": true, "idleTimeout": 60 } },
-    { "id": "svc1", "type": "aws.ecs_fargate", "parentId": "vpc1", "position": { "x": 300, "y": 238 }, "properties": { "name": "api", "image": "public.ecr.aws/nginx/nginx:stable", "containerPort": 8080, "cpu": 512, "memory": 1024, "desiredCount": 2, "healthCheckPath": "/health" } },
-    { "id": "db1", "type": "aws.rds_postgres", "parentId": "vpc1", "position": { "x": 600, "y": 398 }, "properties": { "name": "db", "engineVersion": "16.4", "instanceClass": "db.t4g.medium", "storage": 50, "dbName": "app", "multiAz": true, "backupDays": 7 } },
-    { "id": "acm1", "type": "aws.acm", "position": { "x": 0, "y": 700 }, "properties": { "name": "cert", "domainName": "app.example.gov.sg", "zoneId": "" } },
-    { "id": "cf1", "type": "aws.cloudfront", "position": { "x": 200, "y": 700 }, "properties": { "name": "cdn", "priceClass": "PriceClass_200", "rootObject": "index.html" } },
-    { "id": "cf2", "type": "aws.cloudfront", "position": { "x": 400, "y": 700 }, "properties": { "name": "static", "priceClass": "PriceClass_100", "rootObject": "index.html" } },
-    { "id": "s31", "type": "aws.s3", "position": { "x": 600, "y": 700 }, "properties": { "name": "assets", "versioning": true, "forceDestroy": false } },
-    { "id": "s32", "type": "aws.s3", "position": { "x": 800, "y": 700 }, "properties": { "name": "site", "versioning": false, "forceDestroy": true } },
-    { "id": "ddb1", "type": "aws.dynamodb", "position": { "x": 0, "y": 900 }, "properties": { "name": "items", "hashKey": "id", "hashKeyType": "S", "billing": "PAY_PER_REQUEST" } },
-    { "id": "q1", "type": "aws.sqs", "position": { "x": 200, "y": 900 }, "properties": { "name": "jobs", "fifo": false, "visibility": 30, "dlq": true } },
-    { "id": "t1", "type": "aws.sns", "position": { "x": 400, "y": 900 }, "properties": { "name": "events", "fifo": false } },
-    { "id": "fn1", "type": "aws.lambda", "position": { "x": 600, "y": 900 }, "properties": { "name": "worker", "runtime": "nodejs20.x", "handler": "index.handler", "sourcePath": "./src/handler", "memory": 256, "timeout": 10 } },
-    { "id": "gw1", "type": "aws.apigw", "position": { "x": 800, "y": 900 }, "properties": { "name": "api-gw", "route": "ANY /{proxy+}" } }
+    {
+      "id": "vpc1",
+      "type": "aws.vpc",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "size": {
+        "w": 1264,
+        "h": 584
+      },
+      "properties": {
+        "name": "main",
+        "cidr": "10.30.0.0/16",
+        "nat": "per-az"
+      }
+    },
+    {
+      "id": "alb1",
+      "type": "aws.alb",
+      "parentId": "vpc1-public-a",
+      "position": {
+        "x": 24,
+        "y": 38
+      },
+      "properties": {
+        "name": "web",
+        "internal": false,
+        "https": true,
+        "idleTimeout": 60
+      }
+    },
+    {
+      "id": "svc1",
+      "type": "aws.ecs_fargate",
+      "parentId": "vpc1-private-a",
+      "position": {
+        "x": 24,
+        "y": 38
+      },
+      "properties": {
+        "name": "api",
+        "image": "public.ecr.aws/nginx/nginx:stable",
+        "containerPort": 8080,
+        "cpu": 512,
+        "memory": 1024,
+        "desiredCount": 2,
+        "healthCheckPath": "/health"
+      }
+    },
+    {
+      "id": "db1",
+      "type": "aws.rds_postgres",
+      "parentId": "vpc1-database-a",
+      "position": {
+        "x": 24,
+        "y": 38
+      },
+      "properties": {
+        "name": "db",
+        "engineVersion": "16.4",
+        "instanceClass": "db.t4g.medium",
+        "storage": 50,
+        "dbName": "app",
+        "multiAz": true,
+        "backupDays": 7
+      }
+    },
+    {
+      "id": "acm1",
+      "type": "aws.acm",
+      "position": {
+        "x": 0,
+        "y": 700
+      },
+      "properties": {
+        "name": "cert",
+        "domainName": "app.example.gov.sg",
+        "zoneId": ""
+      }
+    },
+    {
+      "id": "cf1",
+      "type": "aws.cloudfront",
+      "position": {
+        "x": 200,
+        "y": 700
+      },
+      "properties": {
+        "name": "cdn",
+        "priceClass": "PriceClass_200",
+        "rootObject": "index.html"
+      }
+    },
+    {
+      "id": "cf2",
+      "type": "aws.cloudfront",
+      "position": {
+        "x": 400,
+        "y": 700
+      },
+      "properties": {
+        "name": "static",
+        "priceClass": "PriceClass_100",
+        "rootObject": "index.html"
+      }
+    },
+    {
+      "id": "s31",
+      "type": "aws.s3",
+      "position": {
+        "x": 600,
+        "y": 700
+      },
+      "properties": {
+        "name": "assets",
+        "versioning": true,
+        "forceDestroy": false
+      }
+    },
+    {
+      "id": "s32",
+      "type": "aws.s3",
+      "position": {
+        "x": 800,
+        "y": 700
+      },
+      "properties": {
+        "name": "site",
+        "versioning": false,
+        "forceDestroy": true
+      }
+    },
+    {
+      "id": "ddb1",
+      "type": "aws.dynamodb",
+      "position": {
+        "x": 0,
+        "y": 900
+      },
+      "properties": {
+        "name": "items",
+        "hashKey": "id",
+        "hashKeyType": "S",
+        "billing": "PAY_PER_REQUEST"
+      }
+    },
+    {
+      "id": "q1",
+      "type": "aws.sqs",
+      "position": {
+        "x": 200,
+        "y": 900
+      },
+      "properties": {
+        "name": "jobs",
+        "fifo": false,
+        "visibility": 30,
+        "dlq": true
+      }
+    },
+    {
+      "id": "t1",
+      "type": "aws.sns",
+      "position": {
+        "x": 400,
+        "y": 900
+      },
+      "properties": {
+        "name": "events",
+        "fifo": false
+      }
+    },
+    {
+      "id": "fn1",
+      "type": "aws.lambda",
+      "position": {
+        "x": 600,
+        "y": 900
+      },
+      "properties": {
+        "name": "worker",
+        "runtime": "nodejs20.x",
+        "handler": "index.handler",
+        "sourcePath": "./src/handler",
+        "memory": 256,
+        "timeout": 10
+      }
+    },
+    {
+      "id": "gw1",
+      "type": "aws.apigw",
+      "position": {
+        "x": 800,
+        "y": 900
+      },
+      "properties": {
+        "name": "api-gw",
+        "route": "ANY /{proxy+}"
+      }
+    },
+    {
+      "id": "vpc1-public-a",
+      "type": "aws.subnet",
+      "parentId": "vpc1",
+      "position": {
+        "x": 16,
+        "y": 56
+      },
+      "size": {
+        "w": 400,
+        "h": 160
+      },
+      "properties": {
+        "name": "public-a",
+        "tier": "public",
+        "az": "a",
+        "cidr": "10.30.0.0/24"
+      }
+    },
+    {
+      "id": "vpc1-public-b",
+      "type": "aws.subnet",
+      "parentId": "vpc1",
+      "position": {
+        "x": 432,
+        "y": 56
+      },
+      "size": {
+        "w": 400,
+        "h": 160
+      },
+      "properties": {
+        "name": "public-b",
+        "tier": "public",
+        "az": "b",
+        "cidr": "10.30.1.0/24"
+      }
+    },
+    {
+      "id": "vpc1-public-c",
+      "type": "aws.subnet",
+      "parentId": "vpc1",
+      "position": {
+        "x": 848,
+        "y": 56
+      },
+      "size": {
+        "w": 400,
+        "h": 160
+      },
+      "properties": {
+        "name": "public-c",
+        "tier": "public",
+        "az": "c",
+        "cidr": "10.30.2.0/24"
+      }
+    },
+    {
+      "id": "vpc1-private-a",
+      "type": "aws.subnet",
+      "parentId": "vpc1",
+      "position": {
+        "x": 16,
+        "y": 232
+      },
+      "size": {
+        "w": 400,
+        "h": 160
+      },
+      "properties": {
+        "name": "private-a",
+        "tier": "private",
+        "az": "a",
+        "cidr": "10.30.10.0/24"
+      }
+    },
+    {
+      "id": "vpc1-private-b",
+      "type": "aws.subnet",
+      "parentId": "vpc1",
+      "position": {
+        "x": 432,
+        "y": 232
+      },
+      "size": {
+        "w": 400,
+        "h": 160
+      },
+      "properties": {
+        "name": "private-b",
+        "tier": "private",
+        "az": "b",
+        "cidr": "10.30.11.0/24"
+      }
+    },
+    {
+      "id": "vpc1-private-c",
+      "type": "aws.subnet",
+      "parentId": "vpc1",
+      "position": {
+        "x": 848,
+        "y": 232
+      },
+      "size": {
+        "w": 400,
+        "h": 160
+      },
+      "properties": {
+        "name": "private-c",
+        "tier": "private",
+        "az": "c",
+        "cidr": "10.30.12.0/24"
+      }
+    },
+    {
+      "id": "vpc1-database-a",
+      "type": "aws.subnet",
+      "parentId": "vpc1",
+      "position": {
+        "x": 16,
+        "y": 408
+      },
+      "size": {
+        "w": 400,
+        "h": 160
+      },
+      "properties": {
+        "name": "database-a",
+        "tier": "database",
+        "az": "a",
+        "cidr": "10.30.20.0/24"
+      }
+    },
+    {
+      "id": "vpc1-database-b",
+      "type": "aws.subnet",
+      "parentId": "vpc1",
+      "position": {
+        "x": 432,
+        "y": 408
+      },
+      "size": {
+        "w": 400,
+        "h": 160
+      },
+      "properties": {
+        "name": "database-b",
+        "tier": "database",
+        "az": "b",
+        "cidr": "10.30.21.0/24"
+      }
+    },
+    {
+      "id": "vpc1-database-c",
+      "type": "aws.subnet",
+      "parentId": "vpc1",
+      "position": {
+        "x": 848,
+        "y": 408
+      },
+      "size": {
+        "w": 400,
+        "h": 160
+      },
+      "properties": {
+        "name": "database-c",
+        "tier": "database",
+        "az": "c",
+        "cidr": "10.30.22.0/24"
+      }
+    }
   ],
   "edges": [
-    { "id": "e1", "source": "alb1", "target": "svc1" },
-    { "id": "e2", "source": "svc1", "target": "db1" },
-    { "id": "e3", "source": "svc1", "target": "s31" },
-    { "id": "e4", "source": "svc1", "target": "q1" },
-    { "id": "e5", "source": "svc1", "target": "t1" },
-    { "id": "e6", "source": "svc1", "target": "ddb1" },
-    { "id": "e7", "source": "acm1", "target": "alb1" },
-    { "id": "e8", "source": "acm1", "target": "cf1" },
-    { "id": "e9", "source": "cf1", "target": "alb1" },
-    { "id": "e10", "source": "cf2", "target": "s32" },
-    { "id": "e11", "source": "t1", "target": "q1" },
-    { "id": "e12", "source": "q1", "target": "fn1" },
-    { "id": "e13", "source": "fn1", "target": "s31" },
-    { "id": "e14", "source": "fn1", "target": "ddb1" },
-    { "id": "e15", "source": "gw1", "target": "fn1" }
+    {
+      "id": "e1",
+      "source": "alb1",
+      "target": "svc1"
+    },
+    {
+      "id": "e2",
+      "source": "svc1",
+      "target": "db1"
+    },
+    {
+      "id": "e3",
+      "source": "svc1",
+      "target": "s31"
+    },
+    {
+      "id": "e4",
+      "source": "svc1",
+      "target": "q1"
+    },
+    {
+      "id": "e5",
+      "source": "svc1",
+      "target": "t1"
+    },
+    {
+      "id": "e6",
+      "source": "svc1",
+      "target": "ddb1"
+    },
+    {
+      "id": "e7",
+      "source": "acm1",
+      "target": "alb1"
+    },
+    {
+      "id": "e8",
+      "source": "acm1",
+      "target": "cf1"
+    },
+    {
+      "id": "e9",
+      "source": "cf1",
+      "target": "alb1"
+    },
+    {
+      "id": "e10",
+      "source": "cf2",
+      "target": "s32"
+    },
+    {
+      "id": "e11",
+      "source": "t1",
+      "target": "q1"
+    },
+    {
+      "id": "e12",
+      "source": "q1",
+      "target": "fn1"
+    },
+    {
+      "id": "e13",
+      "source": "fn1",
+      "target": "s31"
+    },
+    {
+      "id": "e14",
+      "source": "fn1",
+      "target": "ddb1"
+    },
+    {
+      "id": "e15",
+      "source": "gw1",
+      "target": "fn1"
+    }
   ]
 }

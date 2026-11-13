@@ -1,11 +1,11 @@
 import { CATALOG, Ctx, Resolved, snake } from './catalog';
-import { printBlock, printModule, quote, raw } from './hcl';
+import { printModule, quote, raw } from './hcl';
 import { pipelineYaml } from './pipeline';
 import { validateGraph } from './validate';
 import type { BlockRange, CompileResult, CompiledFile, Diagnostic, Graph } from './types';
 
 export const GENERATOR = 'cloud-canvas@0.1.0';
-const TYPE_ORDER = ['aws.vpc', 'aws.acm', 'aws.s3', 'aws.dynamodb', 'aws.sqs', 'aws.sns', 'aws.rds_postgres', 'aws.rds_mysql', 'aws.ecs_fargate', 'aws.lambda', 'aws.alb', 'aws.apigw', 'aws.cloudfront', 'aws.route53_record'];
+const TYPE_ORDER = ['aws.vpc', 'aws.subnet', 'aws.acm', 'aws.s3', 'aws.dynamodb', 'aws.sqs', 'aws.sns', 'aws.rds_postgres', 'aws.rds_mysql', 'aws.ecs_fargate', 'aws.lambda', 'aws.alb', 'aws.apigw', 'aws.cloudfront', 'aws.route53_record'];
 
 export function compile(g: Graph): CompileResult {
   const diagnostics: Diagnostic[] = validateGraph(g);
@@ -25,6 +25,15 @@ export function compile(g: Graph): CompileResult {
     resolved.set(node.id, { node, label, def, p: node.properties });
   }
 
+  const vpcOf = (r: Resolved): Resolved | undefined => {
+    let cur: Resolved | undefined = r;
+    for (let i = 0; cur && i < 4; i++) {
+      if (cur.node.type === 'aws.vpc') return cur;
+      cur = cur.node.parentId ? resolved.get(cur.node.parentId) : undefined;
+    }
+    return undefined;
+  };
+
   const edges = g.edges.filter((e) => resolved.has(e.source) && resolved.has(e.target));
   const blocks: string[] = [];
   const ranges: BlockRange[] = [];
@@ -39,11 +48,12 @@ export function compile(g: Graph): CompileResult {
 
   if (!hasError()) {
     for (const r of resolved.values()) {
-      const vpcNode = r.node.parentId ? resolved.get(r.node.parentId) : r.def.type === 'aws.vpc' ? r : undefined;
+      if (r.def.virtual) continue;
       const ctx: Ctx = {
         self: r,
         project: g.project,
-        vpc: vpcNode,
+        vpc: vpcOf(r),
+        children: (t) => [...resolved.values()].filter((x) => x.node.parentId === r.node.id && x.node.type === t).sort(byLabel),
         incoming: (t) => edges.filter((e) => e.target === r.node.id).map((e) => resolved.get(e.source)!).filter((x) => x.node.type === t).sort(byLabel),
         outgoing: (t) => edges.filter((e) => e.source === r.node.id).map((e) => resolved.get(e.target)!).filter((x) => x.node.type === t).sort(byLabel),
         ref: (x, attr) => raw(`module.${x.label}.${attr}`),
@@ -65,9 +75,13 @@ export function compile(g: Graph): CompileResult {
       blocks.push(s.text);
       line += lines + 1;
     }
+    for (const r of resolved.values()) {
+      if (!r.def.virtual) continue;
+      const parent = ranges.find((x) => x.nodeId === r.node.parentId);
+      if (parent) ranges.push({ ...parent, nodeId: r.node.id });
+    }
   }
 
-  const needsAz = [...resolved.values()].some((r) => r.node.type === 'aws.vpc');
   const mainParts = [...header.slice(0, 1), ''];
   const mainHeadLines = mainParts.length;
   // recompute ranges relative to the actual head
@@ -88,8 +102,7 @@ export function compile(g: Graph): CompileResult {
   const provider = `provider "aws" {\n  region = ${quote(g.project.region)}\n\n  default_tags {\n    tags = local.mandatory_tags\n  }\n}`;
   const tfBlock = `terraform {\n  required_version = ">= 1.6.0"\n\n  required_providers {\n    aws = {\n      source  = "hashicorp/aws"\n      version = "~> 5.70"\n    }\n  }\n}`;
   const alias = needsUsEast1 ? `\n\nprovider "aws" {\n  alias  = "us_east_1"\n  region = "us-east-1"\n\n  default_tags {\n    tags = local.mandatory_tags\n  }\n}` : '';
-  const az = needsAz ? '\n\n' + printBlock('data', ['aws_availability_zones', 'available'], { state: 'available' }) : '';
-  const versionsTf = `${header[0]}\n\n${tfBlock}\n\n${provider}${alias}\n\n${tags}${az}\n`;
+  const versionsTf = `${header[0]}\n\n${tfBlock}\n\n${provider}${alias}\n\n${tags}\n`;
 
   const files: CompiledFile[] = [
     { path: 'main.tf', language: 'hcl', content: mainTf },

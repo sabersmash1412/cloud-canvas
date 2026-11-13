@@ -1,14 +1,205 @@
 {
   "schemaVersion": "1.0.0",
-  "project": { "name": "member-portal", "squad": "digital-services", "environment": "dev", "region": "ap-southeast-1" },
+  "project": {
+    "name": "member-portal",
+    "squad": "digital-services",
+    "environment": "dev",
+    "region": "ap-southeast-1"
+  },
   "nodes": [
-    { "id": "vpc1", "type": "aws.vpc", "position": { "x": 0, "y": 0 }, "size": { "w": 980, "h": 460 }, "properties": { "name": "main", "cidr": "10.20.0.0/16", "azCount": 2, "nat": "single" } },
-    { "id": "alb1", "type": "aws.alb", "parentId": "vpc1", "position": { "x": 60, "y": 150 }, "properties": { "name": "web", "internal": false, "https": false, "idleTimeout": 60 } },
-    { "id": "svc1", "type": "aws.ecs_fargate", "parentId": "vpc1", "position": { "x": 400, "y": 150 }, "properties": { "name": "api", "image": "public.ecr.aws/nginx/nginx:stable", "containerPort": 8080, "cpu": 512, "memory": 1024, "desiredCount": 2, "healthCheckPath": "/health" } },
-    { "id": "db1", "type": "aws.rds_postgres", "parentId": "vpc1", "position": { "x": 740, "y": 150 }, "properties": { "name": "db", "engineVersion": "16.4", "instanceClass": "db.t4g.medium", "storage": 50, "dbName": "app", "multiAz": true, "backupDays": 7 } }
+    {
+      "id": "vpc1",
+      "type": "aws.vpc",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "size": {
+        "w": 848,
+        "h": 584
+      },
+      "properties": {
+        "name": "main",
+        "cidr": "10.20.0.0/16",
+        "nat": "single"
+      }
+    },
+    {
+      "id": "alb1",
+      "type": "aws.alb",
+      "parentId": "vpc1-public-a",
+      "position": {
+        "x": 24,
+        "y": 38
+      },
+      "properties": {
+        "name": "web",
+        "internal": false,
+        "https": false,
+        "idleTimeout": 60
+      }
+    },
+    {
+      "id": "svc1",
+      "type": "aws.ecs_fargate",
+      "parentId": "vpc1-private-a",
+      "position": {
+        "x": 24,
+        "y": 38
+      },
+      "properties": {
+        "name": "api",
+        "image": "public.ecr.aws/nginx/nginx:stable",
+        "containerPort": 8080,
+        "cpu": 512,
+        "memory": 1024,
+        "desiredCount": 2,
+        "healthCheckPath": "/health"
+      }
+    },
+    {
+      "id": "db1",
+      "type": "aws.rds_postgres",
+      "parentId": "vpc1-database-a",
+      "position": {
+        "x": 24,
+        "y": 38
+      },
+      "properties": {
+        "name": "db",
+        "engineVersion": "16.4",
+        "instanceClass": "db.t4g.medium",
+        "storage": 50,
+        "dbName": "app",
+        "multiAz": true,
+        "backupDays": 7
+      }
+    },
+    {
+      "id": "vpc1-public-a",
+      "type": "aws.subnet",
+      "parentId": "vpc1",
+      "position": {
+        "x": 16,
+        "y": 56
+      },
+      "size": {
+        "w": 400,
+        "h": 160
+      },
+      "properties": {
+        "name": "public-a",
+        "tier": "public",
+        "az": "a",
+        "cidr": "10.20.0.0/24"
+      }
+    },
+    {
+      "id": "vpc1-public-b",
+      "type": "aws.subnet",
+      "parentId": "vpc1",
+      "position": {
+        "x": 432,
+        "y": 56
+      },
+      "size": {
+        "w": 400,
+        "h": 160
+      },
+      "properties": {
+        "name": "public-b",
+        "tier": "public",
+        "az": "b",
+        "cidr": "10.20.1.0/24"
+      }
+    },
+    {
+      "id": "vpc1-private-a",
+      "type": "aws.subnet",
+      "parentId": "vpc1",
+      "position": {
+        "x": 16,
+        "y": 232
+      },
+      "size": {
+        "w": 400,
+        "h": 160
+      },
+      "properties": {
+        "name": "private-a",
+        "tier": "private",
+        "az": "a",
+        "cidr": "10.20.10.0/24"
+      }
+    },
+    {
+      "id": "vpc1-private-b",
+      "type": "aws.subnet",
+      "parentId": "vpc1",
+      "position": {
+        "x": 432,
+        "y": 232
+      },
+      "size": {
+        "w": 400,
+        "h": 160
+      },
+      "properties": {
+        "name": "private-b",
+        "tier": "private",
+        "az": "b",
+        "cidr": "10.20.11.0/24"
+      }
+    },
+    {
+      "id": "vpc1-database-a",
+      "type": "aws.subnet",
+      "parentId": "vpc1",
+      "position": {
+        "x": 16,
+        "y": 408
+      },
+      "size": {
+        "w": 400,
+        "h": 160
+      },
+      "properties": {
+        "name": "database-a",
+        "tier": "database",
+        "az": "a",
+        "cidr": "10.20.20.0/24"
+      }
+    },
+    {
+      "id": "vpc1-database-b",
+      "type": "aws.subnet",
+      "parentId": "vpc1",
+      "position": {
+        "x": 432,
+        "y": 408
+      },
+      "size": {
+        "w": 400,
+        "h": 160
+      },
+      "properties": {
+        "name": "database-b",
+        "tier": "database",
+        "az": "b",
+        "cidr": "10.20.21.0/24"
+      }
+    }
   ],
   "edges": [
-    { "id": "e1", "source": "alb1", "target": "svc1" },
-    { "id": "e2", "source": "svc1", "target": "db1" }
+    {
+      "id": "e1",
+      "source": "alb1",
+      "target": "svc1"
+    },
+    {
+      "id": "e2",
+      "source": "svc1",
+      "target": "db1"
+    }
   ]
 }

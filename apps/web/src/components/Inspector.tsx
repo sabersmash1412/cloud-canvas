@@ -42,7 +42,7 @@ export function Inspector() {
         <img src={`/aws-icons/${def.icon}.svg`} width={30} height={30} style={{ borderRadius: 7 }} alt="" />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 600 }}>{def.label}</div>
-          <div className="mono" style={{ fontSize: 10.5, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{def.module.source.replace('terraform-aws-modules/', '')}</div>
+          <div className="mono" style={{ fontSize: 10.5, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{def.virtual ? 'part of the VPC module' : def.module.source.replace('terraform-aws-modules/', '')}</div>
         </div>
         <button className="btn icon" style={{ border: 0 }} onClick={() => select(null)}><X size={15} /></button>
       </div>
@@ -51,8 +51,10 @@ export function Inspector() {
           <div key={i} style={{ padding: '8px 10px', borderRadius: 8, marginBottom: 10, fontSize: 11.5, lineHeight: 1.4, background: d.severity === 'error' ? 'color-mix(in srgb, var(--err) 14%, transparent)' : 'color-mix(in srgb, var(--warn) 16%, transparent)' }}>{d.message}</div>
         ))}
         {def.fields.map((f) => <Field key={f.key} f={f} value={node.data.properties[f.key] ?? f.default} onChange={(v) => setProp(node.id, f.key, v)} />)}
-        <div style={{ fontSize: 10, letterSpacing: '.08em', color: 'var(--muted)', fontWeight: 600, margin: '18px 0 6px' }}>EXPOSES</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>{def.outputs.map((o) => <span key={o} className="mono kbd">{o}</span>)}</div>
+        {def.outputs.length > 0 && <>
+          <div style={{ fontSize: 10, letterSpacing: '.08em', color: 'var(--muted)', fontWeight: 600, margin: '18px 0 6px' }}>EXPOSES</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>{def.outputs.map((o) => <span key={o} className="mono kbd">{o}</span>)}</div>
+        </>}
       </div>
       <div style={{ padding: 10, borderTop: '1px solid var(--line)' }}>
         <button className="btn" style={{ width: '100%', justifyContent: 'center', color: 'var(--err)' }} onClick={() => onNodesChange([{ type: 'remove', id: node.id }])}><Trash2 size={14} /> Delete</button>

@@ -2,11 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Background, BackgroundVariant, ConnectionMode, Controls, MarkerType, MiniMap, ReactFlow, ReactFlowProvider, useReactFlow, type Connection, type OnConnectStart } from '@xyflow/react';
 import { ArrowLeft, Check, Cloud, Code2, Download, FileUp, LayoutTemplate, Loader2, Moon, PanelLeft, Redo2, Save, Sun, Trash2, Undo2 } from 'lucide-react';
 import { zipSync, strToU8 } from 'fflate';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { CATALOG, edgeRule } from '@cloudcanvas/compiler';
 import { toGraph, useStore } from './store';
 import { useCompile } from './useCompile';
-import { ResourceNode, VpcNode } from './components/nodes';
+import { ResourceNode, SubnetNode, VpcNode } from './components/nodes';
 import { CCEdge } from './components/edge';
 import { Palette } from './components/Palette';
 import { Inspector } from './components/Inspector';
@@ -16,7 +16,7 @@ import { repo, type Project } from './projects';
 import { goHome, useRoute } from './router';
 import { Dashboard } from './components/Dashboard';
 
-const nodeTypes = { resource: ResourceNode, vpc: VpcNode };
+const nodeTypes = { resource: ResourceNode, vpc: VpcNode, subnet: SubnetNode };
 const edgeTypes = { cc: CCEdge };
 
 function download(name: string, data: BlobPart, type = 'application/json') {
@@ -25,6 +25,20 @@ function download(name: string, data: BlobPart, type = 'application/json') {
   a.download = name;
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+function Toast() {
+  const msg = useStore((s) => s.notice);
+  return (
+    <AnimatePresence>
+      {msg && (
+        <motion.div key={msg} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="panel"
+          style={{ position: 'absolute', left: '50%', bottom: 18, transform: 'translateX(-50%)', zIndex: 30, padding: '9px 16px', fontSize: 12.5, maxWidth: 460, pointerEvents: 'none' }}>
+          {msg}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
 }
 
 function Canvas() {
@@ -65,7 +79,8 @@ function Canvas() {
         isValidConnection={(c) => isValid(c as Connection)}
         onConnectStart={onConnectStart}
         onConnectEnd={() => setConnecting(null)}
-        onNodeDragStart={() => useStore.getState().checkpoint()}
+        onNodeDragStart={(_, n) => { useStore.getState().checkpoint(); useStore.getState().startDrag(n.id); }}
+        onNodeDragStop={(_, n) => useStore.getState().dropNode(n.id)}
         onNodeClick={(_, n) => select(n.id)}
         onPaneClick={() => select(null)}
         onDrop={onDrop}
@@ -82,7 +97,7 @@ function Canvas() {
       >
         <Background variant={BackgroundVariant.Dots} gap={22} size={1.4} color="var(--grid)" />
         <Controls showInteractive={false} position="bottom-left" />
-        <MiniMap pannable zoomable position="bottom-right" nodeColor={(n) => (n.type === 'vpc' ? 'transparent' : '#8b7dff')} maskColor="rgba(0,0,0,.12)" />
+        <MiniMap pannable zoomable position="bottom-right" nodeColor={(n) => (n.type === 'vpc' || n.type === 'subnet' ? 'transparent' : '#8b7dff')} maskColor="rgba(0,0,0,.12)" />
       </ReactFlow>
       {nodes.length === 0 && (
         <div className="empty-hint">
@@ -94,6 +109,7 @@ function Canvas() {
         </div>
       )}
       <Inspector />
+      <Toast />
     </div>
   );
 }
@@ -105,20 +121,22 @@ function Editor({ project: proj }: { project: Project }) {
   const file = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState(proj.name);
   const [saved, setSaved] = useState<'saved' | 'saving'>('saved');
-  const ready = useRef(false);
+  const base = useRef<{ nodes: unknown; edges: unknown; project: unknown } | null>(null);
 
   // load the project graph once per project
   useEffect(() => {
     useStore.getState().openGraph(proj.graph);
-    ready.current = false;
-    const t = setTimeout(() => { ready.current = true; fitView({ duration: 0, padding: 0.12, maxZoom: 1 }); }, 120);
+    const st = useStore.getState();
+    base.current = { nodes: st.nodes, edges: st.edges, project: st.project }; // the just-loaded graph needs no save
+    const t = setTimeout(() => fitView({ duration: 0, padding: 0.12, maxZoom: 1 }), 120);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [proj.id]);
 
   // debounced autosave
   useEffect(() => {
-    if (!ready.current) return;
+    const b = base.current;
+    if (b && b.nodes === nodes && b.edges === edges && b.project === project && title === proj.name) return;
     setSaved('saving');
     const t = setTimeout(async () => {
       await repo.save({ ...proj, name: title.trim() || proj.name, graph: toGraph(nodes, edges, project) });
