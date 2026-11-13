@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "1.0.0",
+  "project": { "name": "member-portal", "squad": "digital-services", "environment": "dev", "region": "ap-southeast-1" },
+  "nodes": [
+    { "id": "vpc1", "type": "aws.vpc", "position": { "x": 0, "y": 0 }, "size": { "w": 980, "h": 460 }, "properties": { "name": "main", "cidr": "10.20.0.0/16", "azCount": 2, "nat": "single" } },
+    { "id": "alb1", "type": "aws.alb", "parentId": "vpc1", "position": { "x": 60, "y": 150 }, "properties": { "name": "web", "internal": false, "https": false, "idleTimeout": 60 } },
+    { "id": "svc1", "type": "aws.ecs_fargate", "parentId": "vpc1", "position": { "x": 400, "y": 150 }, "properties": { "name": "api", "image": "public.ecr.aws/nginx/nginx:stable", "containerPort": 8080, "cpu": 512, "memory": 1024, "desiredCount": 2, "healthCheckPath": "/health" } },
+    { "id": "db1", "type": "aws.rds_postgres", "parentId": "vpc1", "position": { "x": 740, "y": 150 }, "properties": { "name": "db", "engineVersion": "16.4", "instanceClass": "db.t4g.medium", "storage": 50, "dbName": "app", "multiAz": true, "backupDays": 7 } }
+  ],
+  "edges": [
+    { "id": "e1", "source": "alb1", "target": "svc1" },
+    { "id": "e2", "source": "svc1", "target": "db1" }
+  ]
+}

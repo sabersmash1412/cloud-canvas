@@ -1,0 +1,15 @@
+{
+  "name": "cloud-canvas",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "pnpm --filter @cloudcanvas/web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm --filter @cloudcanvas/compiler test",
+    "compile": "pnpm --filter @cloudcanvas/compiler cli"
+  },
+  "packageManager": "pnpm@12.3.4",
+  "devDependencies": {
+    "@aws-icons/svg": "4.1.1"
+  }
+}

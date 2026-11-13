@@ -1,0 +1,62 @@
+@import 'tailwindcss';
+
+:root {
+  --bg: #f6f7fb; --panel: #ffffff; --panel-2: #f1f3f9; --line: #e3e6ef; --text: #161a2b; --muted: #6b7390;
+  --accent: #6d5dfc; --accent-soft: #ece9ff; --grid: #d9dce8; --shadow: 0 1px 2px rgba(20,24,50,.06), 0 8px 28px rgba(20,24,50,.08);
+  --err: #e5484d; --warn: #f5a524; --ok: #30a46c;
+}
+:root.dark {
+  --bg: #0c0e17; --panel: #141726; --panel-2: #1a1e30; --line: #262b42; --text: #e8eaf6; --muted: #8189a8;
+  --accent: #8b7dff; --accent-soft: #24214d; --grid: #1e2236; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 32px rgba(0,0,0,.45);
+}
+html, body, #root { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); font-family: Inter, system-ui, sans-serif; font-size: 13px; -webkit-font-smoothing: antialiased; }
+* { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font-weight: 500; cursor: pointer; transition: all .15s; }
+.btn:hover { background: var(--panel-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.icon { width: 32px; padding: 0; justify-content: center; }
+.btn:disabled { opacity: .4; pointer-events: none; }
+.kbd { font-size: 10px; padding: 1px 5px; border-radius: 5px; border: 1px solid var(--line); color: var(--muted); }
+
+/* React Flow theming */
+.react-flow { --xy-background-color: transparent; --xy-edge-stroke: var(--muted); --xy-edge-stroke-selected: var(--accent); }
+.react-flow__attribution { display: none; }
+.react-flow__controls { box-shadow: var(--shadow); border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+.react-flow__controls-button { background: var(--panel); border-bottom: 1px solid var(--line); fill: var(--text); }
+.react-flow__controls-button:hover { background: var(--panel-2); }
+.react-flow__minimap { background: var(--panel) !important; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); }
+.react-flow__handle { width: 10px; height: 10px; background: var(--panel); border: 2px solid var(--accent); opacity: 0; transition: opacity .15s, transform .15s; }
+.cc-node:hover .react-flow__handle, .react-flow.connecting .react-flow__handle { opacity: 1; }
+.react-flow__handle.valid-target { opacity: 1; transform: scale(1.5); background: var(--ok); border-color: var(--ok); }
+.react-flow.connecting .cc-node.invalid { opacity: .35; filter: grayscale(1); }
+.react-flow__edge-path { stroke-width: 1.6; }
+.react-flow__edge.selected .react-flow__edge-path { stroke-width: 2.4; }
+.react-flow__edge.animated .react-flow__edge-path { stroke-dasharray: 5; animation: dash .6s linear infinite; }
+@keyframes dash { to { stroke-dashoffset: -10; } }
+
+.cc-node { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 96px; cursor: grab; position: relative; }
+.cc-node .tile { width: 56px; height: 56px; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,.18); transition: transform .15s, box-shadow .15s; background: var(--panel); }
+.cc-node:hover .tile { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(0,0,0,.22); }
+.cc-node.selected .tile { outline: 2.5px solid var(--accent); outline-offset: 3px; }
+.cc-node .tile img { width: 100%; height: 100%; display: block; pointer-events: none; }
+.cc-node .name { font-size: 11px; font-weight: 600; text-align: center; line-height: 1.2; max-width: 96px; }
+.cc-node .type { font-size: 10px; color: var(--muted); margin-top: -4px; }
+.badge { position: absolute; top: -6px; right: 12px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
+.badge.error { background: var(--err); } .badge.warning { background: var(--warn); }
+
+.group-vpc { border: 1.5px solid #8c4fff; background: color-mix(in srgb, #8c4fff 5%, transparent); border-radius: 14px; width: 100%; height: 100%; position: relative; }
+.group-vpc.selected { box-shadow: 0 0 0 2px var(--accent); }
+.group-tier { position: absolute; left: 12px; right: 12px; border-radius: 10px; border: 1.5px dashed; pointer-events: none; }
+.group-tier span { position: absolute; top: 6px; left: 10px; font-size: 10px; font-weight: 600; letter-spacing: .04em; display: flex; align-items: center; gap: 5px; }
+.group-tier img { width: 14px; height: 14px; }
+
+.monaco-editor, .monaco-editor-background { --vscode-editor-background: transparent; }
+
+.cc-hl { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.cc-hl-gutter { border-left: 3px solid var(--accent); margin-left: 3px; }
+.empty-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
