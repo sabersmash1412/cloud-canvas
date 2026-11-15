@@ -59,6 +59,12 @@ export interface NodeDef {
   minAzs?: number;
   /** structural node: no module of its own, folded into its parent's module */
   virtual?: boolean;
+  /** emits only its rawBlocks (imported code kept as-is), no module call */
+  verbatim?: boolean;
+  /** not offered in the palette */
+  hidden?: boolean;
+  /** disambiguates node types that share one module source (import) */
+  matches?: (inputs: Record<string, unknown>) => boolean;
   module: { source: string; version: string };
   fields: FieldDef[];
   /** output names this node exposes to others (docs/UI only) */
@@ -163,6 +169,7 @@ function rdsDef(engine: 'postgres' | 'mysql'): NodeDef {
     parent: 'aws.subnet',
     tier: 'database',
     minAzs: 2,
+    matches: (i) => i.engine === engine,
     module: { source: 'terraform-aws-modules/rds/aws', version: '~> 6.10' },
     outputs: ['db_instance_endpoint', 'db_instance_master_user_secret_arn'],
     fields: [
@@ -287,6 +294,21 @@ const ALL: NodeDef[] = [
   },
 
   // ───────────────────────── Edge & Security ─────────────────────────
+  {
+    type: 'aws.unmanaged',
+    label: 'Unmanaged module',
+    category: 'Networking',
+    description: 'A module from imported Terraform that Cloud Canvas does not model. Its code is kept exactly as imported.',
+    icon: 'unmanaged',
+    color: '#6b7390',
+    hidden: true,
+    verbatim: true,
+    module: { source: '', version: '' },
+    outputs: [],
+    fields: [],
+    build: (c) => ({ inputs: {}, rawBlocks: [String(c.self.p.code ?? '')] }),
+  },
+
   {
     type: 'aws.subnet',
     label: 'Subnet',

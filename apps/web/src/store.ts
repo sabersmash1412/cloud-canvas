@@ -5,13 +5,13 @@ import {
   type Diagnostic, type Graph, type GraphNode, type ProjectMeta, type Props, type Tier,
 } from '@cloudcanvas/compiler';
 
-export type CNode = Node<{ type: string; properties: Props }>;
+export type CNode = Node<{ type: string; properties: Props; label?: string; extras?: Record<string, unknown> }>;
 export type CEdge = Edge;
 
 const CONTAINER_KIND: Record<string, string> = { 'aws.vpc': 'vpc', 'aws.subnet': 'subnet' };
 const isContainer = (type: string) => type in CONTAINER_KIND;
 
-interface Snap { nodes: CNode[]; edges: CEdge[]; project: ProjectMeta }
+interface Snap { nodes: CNode[]; edges: CEdge[]; project: ProjectMeta; passthrough?: Graph['passthrough'] }
 
 interface State extends Snap {
   past: Snap[];
@@ -50,7 +50,7 @@ let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 let dragOrigin: { id: string; parentId?: string; position: { x: number; y: number } } | null = null;
 let lastProp = '';
 
-const snapOf = (s: Snap): Snap => ({ nodes: s.nodes, edges: s.edges, project: s.project });
+const snapOf = (s: Snap): Snap => ({ nodes: s.nodes, edges: s.edges, project: s.project, passthrough: s.passthrough });
 
 export function uniqueName(nodes: CNode[], type: string, base: string): string {
   const taken = new Set(nodes.filter((n) => n.data.type === type).map((n) => String(n.data.properties.name)));
@@ -93,23 +93,24 @@ function toRF(n: GraphNode): CNode {
     ...(n.type === 'aws.subnet' ? { extent: 'parent' as const } : {}),
     ...(kind ? { width: w, height: h, style: { width: w, height: h } } : {}),
     ...(n.type === 'aws.vpc' ? { zIndex: -1 } : {}),
-    data: { type: n.type, properties: n.properties },
+    data: { type: n.type, properties: n.properties, ...(n.label ? { label: n.label } : {}), ...(n.extras ? { extras: n.extras } : {}) },
   };
 }
 
-export function fromGraph(input: Graph): { nodes: CNode[]; edges: CEdge[] } {
+export function fromGraph(input: Graph): { nodes: CNode[]; edges: CEdge[]; passthrough?: Graph['passthrough'] } {
   const g = migrateGraph(input);
   const byId = new Map(g.nodes.map((n) => [n.id, n]));
   const depth = (n: GraphNode) => { let d = 0, p = n.parentId ? byId.get(n.parentId) : undefined; while (p && d < 6) { d++; p = p.parentId ? byId.get(p.parentId) : undefined; } return d; };
   const nodes = [...g.nodes].sort((a, b) => depth(a) - depth(b)).map(toRF);
   const edges: CEdge[] = g.edges.map((e) => ({ id: e.id, source: e.source, target: e.target, type: 'cc', animated: false }));
-  return { nodes, edges };
+  return { nodes, edges, passthrough: g.passthrough };
 }
 
-export function toGraph(nodes: CNode[], edges: CEdge[], project: ProjectMeta): Graph {
+export function toGraph(nodes: CNode[], edges: CEdge[], project: ProjectMeta, passthrough?: Graph['passthrough']): Graph {
   return {
     schemaVersion: '1.0.0',
     project,
+    ...(passthrough?.length ? { passthrough } : {}),
     nodes: nodes.map((n) => {
       const { w, h } = sizeOf(n);
       return {
@@ -119,6 +120,8 @@ export function toGraph(nodes: CNode[], edges: CEdge[], project: ProjectMeta): G
         position: { x: Math.round(n.position.x), y: Math.round(n.position.y) },
         ...(isContainer(n.data.type) ? { size: { w: Math.round(w), h: Math.round(h) } } : {}),
         properties: n.data.properties,
+        ...(n.data.label ? { label: n.data.label } : {}),
+        ...(n.data.extras ? { extras: n.data.extras } : {}),
       };
     }),
     edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
@@ -144,6 +147,7 @@ export const useStore = create<State>((set, get) => ({
   nodes: [],
   edges: [],
   project: initialProject,
+  passthrough: undefined,
   past: [],
   future: [],
   selected: null,
@@ -328,8 +332,8 @@ export const useStore = create<State>((set, get) => ({
   undo: () => { const s = get(); const p = s.past.at(-1); if (!p) return; set({ ...p, past: s.past.slice(0, -1), future: [snapOf(s), ...s.future], selected: null }); lastProp = ''; },
   redo: () => { const s = get(); const f = s.future[0]; if (!f) return; set({ ...f, future: s.future.slice(1), past: [...s.past, snapOf(s)], selected: null }); lastProp = ''; },
 
-  load: (g) => { const s = get(); const { nodes, edges } = fromGraph(g); set({ nodes, edges, project: g.project, selected: null, past: [...s.past.slice(-80), snapOf(s)], future: [] }); },
-  openGraph: (g) => { const { nodes, edges } = fromGraph(g); lastProp = ''; set({ nodes, edges, project: g.project, selected: null, past: [], future: [], diagnostics: [], notice: null }); },
+  load: (g) => { const s = get(); const { nodes, edges } = fromGraph(g); set({ nodes, edges, passthrough: g.passthrough, project: g.project, selected: null, past: [...s.past.slice(-80), snapOf(s)], future: [] }); },
+  openGraph: (g) => { const { nodes, edges, passthrough } = fromGraph(g); lastProp = ''; set({ nodes, edges, passthrough, project: g.project, selected: null, past: [], future: [], diagnostics: [], notice: null }); },
   clear: () => { const s = get(); set({ nodes: [], edges: [], selected: null, past: [...s.past.slice(-80), snapOf(s)], future: [] }); },
 
   toggleDark: () => set((s) => { try { localStorage.setItem('cc-dark', s.dark ? '0' : '1'); } catch { /* ignore */ } return { dark: !s.dark }; }),

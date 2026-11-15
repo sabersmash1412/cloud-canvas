@@ -85,7 +85,7 @@
       "properties": {
         "name": "cert",
         "domainName": "app.example.gov.sg",
-        "zoneId": ""
+        "hostedZone": ""
       }
     },
     {

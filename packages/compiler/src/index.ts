@@ -7,3 +7,5 @@ export { pipelineYaml } from './pipeline';
 export * from './templates';
 export * from './layout';
 export { parseCidr } from './cidr';
+export { importTerraform } from './import';
+export type { ImportOptions, ImportReport, ImportResult, TfFile, HclParser } from './import';

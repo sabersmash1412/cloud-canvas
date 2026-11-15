@@ -7,7 +7,7 @@ export function Palette() {
   const [closed, setClosed] = useState<Record<string, boolean>>({});
   const [hover, setHover] = useState<{ def: NodeDef; y: number } | null>(null);
   const groups = useMemo(
-    () => CATEGORIES.map((c) => ({ c, items: CATALOG_LIST.filter((d) => d.category === c && (d.label + d.description).toLowerCase().includes(q.toLowerCase())) })).filter((g) => g.items.length),
+    () => CATEGORIES.map((c) => ({ c, items: CATALOG_LIST.filter((d) => !d.hidden && d.category === c && (d.label + d.description).toLowerCase().includes(q.toLowerCase())) })).filter((g) => g.items.length),
     [q],
   );
   return (

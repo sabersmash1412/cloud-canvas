@@ -8,6 +8,13 @@ export interface GraphNode {
   position: { x: number; y: number };
   size?: { w: number; h: number };
   properties: Props;
+  /** Terraform module label override (set by import so references to the module stay valid) */
+  label?: string;
+  /**
+   * Module inputs imported from existing Terraform that the catalog form can't express.
+   * Re-emitted verbatim (in hcl2json form: expressions are "${...}" strings); not editable on the canvas.
+   */
+  extras?: Record<string, unknown>;
 }
 
 export interface GraphEdge {
@@ -28,6 +35,8 @@ export interface Graph {
   project: ProjectMeta;
   nodes: GraphNode[];
   edges: GraphEdge[];
+  /** Blocks imported from Terraform that are not shown on the canvas; emitted verbatim in main.tf */
+  passthrough?: { file: string; code: string }[];
 }
 
 export type Tier = 'public' | 'private' | 'database';
@@ -81,6 +90,8 @@ export interface DetailInput {
   text: string;
   /** other canvas nodes this value points at */
   refs: DetailRef[];
+  /** came from imported Terraform; not editable on the canvas */
+  imported?: boolean;
 }
 
 /** Structured view of one node's generated module call, for the editor panel. */
@@ -95,8 +106,20 @@ export interface NodeDetail {
   virtual?: boolean;
 }
 
+export interface ModuleOutput {
+  label: string;
+  /** inputs generated from the catalog (before imported extras are merged in) */
+  generated: Record<string, unknown>;
+  /** the module is given `providers = { aws = aws.us_east_1 }` separately from its inputs */
+  usEast1?: boolean;
+  companions: { label: string; source: string; inputs: Record<string, unknown> }[];
+  rawBlocks: string[];
+}
+
 export interface CompileResult {
   files: CompiledFile[];
+  /** generated module calls per node; used by the importer to compare against existing code */
+  modules: Record<string, ModuleOutput>;
   blocks: BlockRange[];
   details: Record<string, NodeDetail>;
   diagnostics: Diagnostic[];

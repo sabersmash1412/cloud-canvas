@@ -7,8 +7,9 @@ export function useCompile(): CompileResult {
   const nodes = useStore((s) => s.nodes);
   const edges = useStore((s) => s.edges);
   const project = useStore((s) => s.project);
+  const passthrough = useStore((s) => s.passthrough);
   const setDiagnostics = useStore((s) => s.setDiagnostics);
-  const result = useMemo(() => compile(toGraph(nodes, edges, project)), [nodes, edges, project]);
+  const result = useMemo(() => compile(toGraph(nodes, edges, project, passthrough)), [nodes, edges, project, passthrough]);
   useEffect(() => setDiagnostics(result.diagnostics), [result, setDiagnostics]);
   return result;
 }

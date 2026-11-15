@@ -2,14 +2,21 @@ import { CATALOG, Ctx, Resolved, snake } from './catalog';
 import { fmtValue, printModule, quote, Raw, raw, type HclValue } from './hcl';
 import { pipelineYaml } from './pipeline';
 import { validateGraph } from './validate';
-import type { BlockRange, CompileResult, CompiledFile, DetailInput, DetailRef, Diagnostic, Graph, NodeDetail } from './types';
+import { fromHclJson } from './import/hclJson';
+import type { BlockRange, CompileResult, CompiledFile, DetailInput, DetailRef, Diagnostic, Graph, ModuleOutput, NodeDetail } from './types';
 
 export const GENERATOR = 'cloud-canvas@0.1.0';
-const TYPE_ORDER = ['aws.vpc', 'aws.subnet', 'aws.acm', 'aws.s3', 'aws.dynamodb', 'aws.sqs', 'aws.sns', 'aws.rds_postgres', 'aws.rds_mysql', 'aws.ecs_fargate', 'aws.lambda', 'aws.alb', 'aws.apigw', 'aws.cloudfront', 'aws.route53_record'];
+const TYPE_ORDER = ['aws.vpc', 'aws.subnet', 'aws.acm', 'aws.s3', 'aws.dynamodb', 'aws.sqs', 'aws.sns', 'aws.rds_postgres', 'aws.rds_mysql', 'aws.ecs_fargate', 'aws.lambda', 'aws.alb', 'aws.apigw', 'aws.cloudfront', 'aws.route53_record', 'aws.unmanaged'];
 
-export function compile(g: Graph): CompileResult {
+export interface CompileOptions {
+  /** generate code even when validation finds errors (used when importing existing Terraform) */
+  lenient?: boolean;
+}
+
+export function compile(g: Graph, opts: CompileOptions = {}): CompileResult {
   const diagnostics: Diagnostic[] = validateGraph(g);
-  const hasError = () => diagnostics.some((d) => d.severity === 'error');
+  const realErrors = () => diagnostics.some((d) => d.severity === 'error');
+  const hasError = () => !opts.lenient && realErrors();
 
   // ── resolve nodes → labelled resources (deterministic, collision-safe)
   const used = new Set<string>();
@@ -17,10 +24,11 @@ export function compile(g: Graph): CompileResult {
   const sorted = [...g.nodes]
     .filter((n) => CATALOG[n.type])
     .sort((a, b) => TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type) || String(a.properties.name).localeCompare(String(b.properties.name)) || a.id.localeCompare(b.id));
+  for (const node of sorted) if (node.label) used.add(node.label);
   for (const node of sorted) {
     const def = CATALOG[node.type];
-    let label = snake(String(node.properties.name || node.id));
-    for (let i = 2; used.has(label) || used.has(`${label}_sg`); i++) label = `${snake(String(node.properties.name))}_${i}`;
+    let label = node.label || snake(String(node.properties.name || node.id));
+    if (!node.label) for (let i = 2; used.has(label) || used.has(`${label}_sg`); i++) label = `${snake(String(node.properties.name))}_${i}`;
     used.add(label);
     resolved.set(node.id, { node, label, def, p: node.properties });
   }
@@ -44,7 +52,8 @@ export function compile(g: Graph): CompileResult {
   let line = header.length;
 
   const sections: { nodeId: string; text: string }[] = [];
-  const built: { r: Resolved; res: ReturnType<Resolved['def']['build']> }[] = [];
+  const built: { r: Resolved; res: ReturnType<Resolved['def']['build']>; generated: Record<string, HclValue>; imported: Set<string> }[] = [];
+  const verbatimNote = (r: Resolved) => `# canvas:node id=${r.node.id} type=${r.node.type}`;
   let needsUsEast1 = false;
 
   if (!hasError()) {
@@ -60,15 +69,37 @@ export function compile(g: Graph): CompileResult {
         ref: (x, attr) => raw(`module.${x.label}.${attr}`),
         warn: (message) => diagnostics.push({ severity: 'warning', nodeId: r.node.id, message }),
       };
-      const res = r.def.build(ctx);
-      built.push({ r, res });
+      let res: ReturnType<Resolved['def']['build']>;
+      try {
+        res = r.def.build(ctx);
+      } catch (e) {
+        if (!opts.lenient) throw e;
+        diagnostics.push({ severity: 'error', nodeId: r.node.id, message: `Could not generate ${r.def.label}: ${(e as Error).message}` });
+        res = { inputs: {} };
+      }
+      // imported inputs the form can't express are re-emitted as-is (source/version may be overridden too)
+      const { source: exSource, version: exVersion, ...exInputs } = (r.node.extras ? fromHclJson(r.node.extras) : {}) as Record<string, HclValue>;
+      const merged = { ...res.inputs, ...exInputs };
+      const generated = res.inputs;
+      res = { ...res, inputs: merged };
+      built.push({ r, res, generated, imported: new Set(Object.keys(exInputs)) });
       if (res.usEast1) needsUsEast1 = true;
-      const parts: string[] = [
-        `# canvas:node id=${r.node.id} type=${r.node.type}\n` +
-          printModule({ name: r.label, source: r.def.module.source, version: r.def.module.version, inputs: res.inputs, ...(res.usEast1 ? { providers: { aws: raw('aws.us_east_1') } } : {}) }),
-      ];
-      for (const x of res.extraModules ?? []) parts.push(printModule({ name: x.label, source: x.source, version: x.version, inputs: x.inputs }));
-      for (const rb of res.rawBlocks ?? []) parts.push(rb);
+      const parts: string[] = r.def.verbatim
+        ? [`${verbatimNote(r)}\n${(res.rawBlocks ?? []).join('\n\n')}`]
+        : [
+            `${verbatimNote(r)}\n` +
+              printModule({
+                name: r.label,
+                source: typeof exSource === 'string' ? exSource : r.def.module.source,
+                version: typeof exVersion === 'string' ? exVersion : r.def.module.version,
+                inputs: res.inputs,
+                ...(res.usEast1 ? { providers: { aws: raw('aws.us_east_1') } } : {}),
+              }),
+          ];
+      if (!r.def.verbatim) {
+        for (const x of res.extraModules ?? []) parts.push(printModule({ name: x.label, source: x.source, version: x.version, inputs: x.inputs }));
+        for (const rb of res.rawBlocks ?? []) parts.push(rb);
+      }
       sections.push({ nodeId: r.node.id, text: parts.join('\n\n') });
     }
     for (const s of sections) {
@@ -82,6 +113,7 @@ export function compile(g: Graph): CompileResult {
       const parent = ranges.find((x) => x.nodeId === r.node.parentId);
       if (parent) ranges.push({ ...parent, nodeId: r.node.id });
     }
+    for (const p of g.passthrough ?? []) blocks.push(p.code.trim());
   }
 
   const mainParts = [...header.slice(0, 1), ''];
@@ -110,21 +142,22 @@ export function compile(g: Graph): CompileResult {
       else if (v && typeof v === 'object') Object.values(v).forEach((x) => refsIn(x, out));
       return out;
     };
-    const summarize = (key: string, v: HclValue): DetailInput => {
+    const summarize = (key: string, v: HclValue, imported = false): DetailInput => {
       const refs = refsIn(v);
-      if (v === null) return { key, kind: 'null', text: 'null', refs };
-      if (v instanceof Raw) return { key, kind: /^module\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+$/.test(v.expr) ? 'ref' : 'expr', text: v.expr, refs };
-      if (typeof v === 'string') return { key, kind: 'string', text: v, refs };
-      if (typeof v === 'number') return { key, kind: 'number', text: String(v), refs };
-      if (typeof v === 'boolean') return { key, kind: 'boolean', text: String(v), refs };
-      return { key, kind: Array.isArray(v) ? 'list' : 'object', text: fmtValue(v), refs };
+      const tag = <T extends DetailInput>(d: T): T => (imported ? { ...d, imported: true } : d);
+      if (v === null) return tag({ key, kind: 'null', text: 'null', refs });
+      if (v instanceof Raw) return tag({ key, kind: /^module\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+$/.test(v.expr) ? 'ref' : 'expr', text: v.expr, refs });
+      if (typeof v === 'string') return tag({ key, kind: 'string', text: v, refs });
+      if (typeof v === 'number') return tag({ key, kind: 'number', text: String(v), refs });
+      if (typeof v === 'boolean') return tag({ key, kind: 'boolean', text: String(v), refs });
+      return tag({ key, kind: Array.isArray(v) ? 'list' : 'object', text: fmtValue(v), refs });
     };
-    for (const { r, res } of built)
+    for (const { r, res, imported } of built)
       details[r.node.id] = {
         moduleLabel: r.label,
-        source: r.def.module.source,
+        source: r.def.verbatim ? String(r.node.properties.source ?? 'module') : r.def.module.source,
         version: r.def.module.version,
-        inputs: Object.entries(res.inputs).filter(([, v]) => v !== undefined).map(([k, v]) => summarize(k, v)),
+        inputs: Object.entries(res.inputs).filter(([, v]) => v !== undefined).map(([k, v]) => summarize(k, v, imported.has(k))),
         companions: (res.extraModules ?? []).map((x) => ({ label: x.label, source: x.source })),
       };
     for (const r of resolved.values()) {
@@ -132,6 +165,10 @@ export function compile(g: Graph): CompileResult {
       details[r.node.id] = { ...details[r.node.parentId], virtual: true };
     }
   }
+
+  const modules: Record<string, ModuleOutput> = {};
+  for (const { r, res, generated } of built)
+    modules[r.node.id] = { label: r.label, generated, ...(res.usEast1 ? { usEast1: true } : {}), companions: (res.extraModules ?? []).map((x) => ({ label: x.label, source: x.source, inputs: x.inputs })), rawBlocks: res.rawBlocks ?? [] };
 
   const tagEntries: [string, string][] = [
     ['Project', g.project.name],
@@ -151,7 +188,7 @@ export function compile(g: Graph): CompileResult {
     { path: 'versions.tf', language: 'hcl', content: versionsTf },
     { path: 'azure-pipelines.yml', language: 'yaml', content: pipelineYaml(g) },
   ];
-  return { files, blocks: ranges, details, diagnostics, ok: !hasError() };
+  return { files, modules, blocks: ranges, details, diagnostics, ok: !realErrors() };
 }
 
 const byLabel = (a: Resolved, b: Resolved) => a.label.localeCompare(b.label);

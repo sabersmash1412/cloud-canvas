@@ -114,7 +114,7 @@ function Canvas() {
 
 function Editor({ project: proj }: { project: Project }) {
   const result = useCompile();
-  const { project, setProject, dark, toggleDark, undo, redo, load, clear, past, future, nodes, edges } = useStore();
+  const { project, setProject, dark, toggleDark, undo, redo, load, clear, past, future, nodes, edges, passthrough } = useStore();
   const { fitView } = useReactFlow();
   const file = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState(proj.name);
@@ -138,12 +138,12 @@ function Editor({ project: proj }: { project: Project }) {
     if (b && b.nodes === nodes && b.edges === edges && b.project === project && title === proj.name) return;
     setSaved('saving');
     const t = setTimeout(async () => {
-      await repo.save({ ...proj, name: title.trim() || proj.name, graph: toGraph(nodes, edges, project) });
+      await repo.save({ ...proj, name: title.trim() || proj.name, graph: toGraph(nodes, edges, project, passthrough) });
       setSaved('saved');
     }, 500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, edges, project, title]);
+  }, [nodes, edges, project, passthrough, title]);
 
   useEffect(() => { document.documentElement.classList.toggle('dark', dark); }, [dark]);
   useEffect(() => {
@@ -159,7 +159,7 @@ function Editor({ project: proj }: { project: Project }) {
 
   const apply = (g: ReturnType<typeof toGraph>) => { load(g); setTimeout(() => fitView({ duration: 400, padding: 0.2, maxZoom: 1 }), 60); };
   const exportZip = () => {
-    const files: Record<string, Uint8Array> = { 'canvas.json': strToU8(JSON.stringify(toGraph(nodes, edges, project), null, 2)) };
+    const files: Record<string, Uint8Array> = { 'canvas.json': strToU8(JSON.stringify(toGraph(nodes, edges, project, passthrough), null, 2)) };
     for (const f of result.files) files[`${project.name}/${f.path}`] = strToU8(f.content);
     download(`${project.name}-${project.environment}.zip`, zipSync(files) as BlobPart, 'application/zip');
   };
@@ -186,7 +186,7 @@ function Editor({ project: proj }: { project: Project }) {
         <button className="btn icon" title="Clear canvas" disabled={!nodes.length} onClick={clear}><Trash2 size={15} /></button>
         <button className="btn icon" title="Open canvas.json" onClick={() => file.current?.click()}><FileUp size={15} /></button>
         <input ref={file} type="file" accept=".json" hidden onChange={async (e) => { const f = e.target.files?.[0]; if (f) apply(JSON.parse(await f.text())); e.target.value = ''; }} />
-        <button className="btn icon" title="Save canvas.json" onClick={() => download(`${project.name}.canvas.json`, JSON.stringify(toGraph(nodes, edges, project), null, 2))}><Save size={15} /></button>
+        <button className="btn icon" title="Save canvas.json" onClick={() => download(`${project.name}.canvas.json`, JSON.stringify(toGraph(nodes, edges, project, passthrough), null, 2))}><Save size={15} /></button>
         <button className="btn icon" title={dark ? 'Light mode' : 'Dark mode'} onClick={toggleDark}>{dark ? <Sun size={15} /> : <Moon size={15} />}</button>
         <button className="btn primary" disabled={!result.ok || !nodes.length} onClick={exportZip}><Download size={14} /> Get code</button>
       </header>

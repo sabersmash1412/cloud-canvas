@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Cloud, Copy, Download, FolderPlus, LayoutGrid, MoreHorizontal, Moon, Pencil, Plus, Search, Sun, Trash2 } from 'lucide-react';
+import { Cloud, Copy, Download, FileInput, FolderPlus, LayoutGrid, MoreHorizontal, Moon, Pencil, Plus, Search, Sun, Trash2 } from 'lucide-react';
 import { ago, newId, repo, type Project } from '../projects';
 import { goProject } from '../router';
 import { useStore } from '../store';
 import { DiagramSVG } from './DiagramSVG';
 import { CreateProject } from './CreateProject';
+import { ImportTerraform } from './ImportTerraform';
 import { Modal } from './Modal';
 
 function download(name: string, data: string) {
@@ -47,6 +48,7 @@ export function Dashboard() {
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<'recent' | 'name'>('recent');
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [renaming, setRenaming] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState<Project | null>(null);
   const [newName, setNewName] = useState('');
@@ -94,6 +96,7 @@ export function Dashboard() {
             </select>
           </>
         )}
+        <button className="btn" data-testid="import-terraform" style={{ height: 34 }} onClick={() => setImporting(true)}><FileInput size={15} /> Import Terraform</button>
         <button className="btn primary" data-testid="create-project" style={{ height: 34 }} onClick={() => setCreating(true)}><Plus size={15} /> Create project</button>
       </div>
 
@@ -102,7 +105,10 @@ export function Dashboard() {
           <div style={{ width: 64, height: 64, borderRadius: 18, margin: '0 auto 16px', display: 'grid', placeItems: 'center', background: 'var(--accent-soft)', color: 'var(--accent)' }}><FolderPlus size={30} /></div>
           <div style={{ fontSize: 17, fontWeight: 600 }}>Create your first project</div>
           <p style={{ color: 'var(--muted)', margin: '6px auto 20px', maxWidth: 380, lineHeight: 1.5 }}>Design an AWS architecture on the canvas and get Terraform generated for you. Start from a template or a blank canvas.</p>
-          <button className="btn primary" style={{ height: 36 }} onClick={() => setCreating(true)}><Plus size={15} /> Create project</button>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+            <button className="btn primary" style={{ height: 36 }} onClick={() => setCreating(true)}><Plus size={15} /> Create project</button>
+            <button className="btn" style={{ height: 36 }} onClick={() => setImporting(true)}><FileInput size={15} /> Import Terraform</button>
+          </div>
         </motion.div>
       ) : shown.length === 0 ? (
         <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 60 }}>No projects match “{q}”.</div>
@@ -113,6 +119,7 @@ export function Dashboard() {
       )}
 
       <CreateProject open={creating} onClose={() => setCreating(false)} existing={(projects ?? []).map((p) => p.name.toLowerCase())} />
+      <ImportTerraform open={importing} onClose={() => setImporting(false)} existing={(projects ?? []).map((p) => p.name.toLowerCase())} />
 
       <Modal open={!!renaming} onClose={() => setRenaming(null)} width={400}>
         <form style={{ padding: 22 }} onSubmit={async (e) => { e.preventDefault(); if (renaming && newName.trim()) { await repo.save({ ...renaming, name: newName.trim() }); setRenaming(null); refresh(); } }}>

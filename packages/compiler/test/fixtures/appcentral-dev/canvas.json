@@ -1,0 +1,110 @@
+{
+  "schemaVersion": "1.0.0",
+  "project": {
+    "name": "appcentral",
+    "environment": "dev",
+    "region": "ap-southeast-1"
+  },
+  "nodes": [
+    {
+      "id": "vpc1",
+      "type": "aws.vpc",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "size": {
+        "w": 880,
+        "h": 540
+      },
+      "properties": {
+        "name": "main",
+        "cidr": "10.20.0.0/16",
+        "azCount": 2,
+        "nat": "single"
+      }
+    },
+    {
+      "id": "q",
+      "type": "aws.sqs",
+      "position": {
+        "x": 920,
+        "y": 250
+      },
+      "properties": {
+        "name": "jobs",
+        "fifo": false,
+        "visibility": 30,
+        "dlq": true
+      }
+    },
+    {
+      "id": "alb",
+      "type": "aws.alb",
+      "parentId": "vpc1",
+      "position": {
+        "x": 120,
+        "y": 78
+      },
+      "properties": {
+        "name": "web",
+        "internal": false,
+        "https": false,
+        "idleTimeout": 60
+      }
+    },
+    {
+      "id": "svc",
+      "type": "aws.ecs_fargate",
+      "parentId": "vpc1",
+      "position": {
+        "x": 380,
+        "y": 238
+      },
+      "properties": {
+        "name": "api",
+        "image": "public.ecr.aws/nginx/nginx:stable",
+        "containerPort": 8080,
+        "cpu": 512,
+        "memory": 1024,
+        "desiredCount": 2,
+        "healthCheckPath": "/health"
+      }
+    },
+    {
+      "id": "db",
+      "type": "aws.rds_postgres",
+      "parentId": "vpc1",
+      "position": {
+        "x": 620,
+        "y": 398
+      },
+      "properties": {
+        "name": "db",
+        "engineVersion": "16.4",
+        "instanceClass": "db.t4g.medium",
+        "storage": 50,
+        "dbName": "app",
+        "multiAz": true,
+        "backupDays": 7
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "alb-svc",
+      "source": "alb",
+      "target": "svc"
+    },
+    {
+      "id": "svc-db",
+      "source": "svc",
+      "target": "db"
+    },
+    {
+      "id": "svc-q",
+      "source": "svc",
+      "target": "q"
+    }
+  ]
+}

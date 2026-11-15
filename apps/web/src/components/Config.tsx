@@ -37,7 +37,7 @@ export function Value({ input, go }: { input: DetailInput; go: (id: string) => v
   return <span className="mono" style={{ color, fontSize: 12.5, overflowWrap: 'anywhere' }}>{input.text}</span>;
 }
 
-export function Row({ label, children }: { label: string; children: React.ReactNode }) {
+export function Row({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, 42%) 1fr', gap: 10, padding: '6px 0', alignItems: 'start' }}>
       <span style={{ fontWeight: 450 }}>{label}</span>
@@ -48,7 +48,15 @@ export function Row({ label, children }: { label: string; children: React.ReactN
 
 /** Every module input Cloud Canvas generates for a node (read-only). */
 export function FullConfig({ inputs, go }: { inputs: DetailInput[]; go: (id: string) => void }) {
-  return <div>{inputs.map((i) => <Row key={i.key} label={humanize(i.key)}><Value input={i} go={go} /></Row>)}</div>;
+  return (
+    <div>
+      {inputs.map((i) => (
+        <Row key={i.key} label={<>{humanize(i.key)}{i.imported && <span className="kbd" title="Came from your imported Terraform. Kept exactly as written; not editable on the canvas." style={{ marginLeft: 6, color: 'var(--accent)', borderColor: 'var(--accent)' }}>imported</span>}</>}>
+          <Value input={i} go={go} />
+        </Row>
+      ))}
+    </div>
+  );
 }
 
 export function ShowFull({ open, onToggle }: { open: boolean; onToggle: () => void }) {
