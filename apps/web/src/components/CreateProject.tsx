@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, GitBranch, LayoutTemplate, Loader2, Terminal } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, FileInput, GitBranch, LayoutTemplate, Loader2, Terminal } from 'lucide-react';
 import { buildTemplate, SCRATCH_TEMPLATE_ID, TEMPLATES, type ProjectMeta } from '@cloudcanvas/compiler';
 import { Modal } from './Modal';
+import { ImportTerraform } from './ImportTerraform';
 import { DiagramSVG } from './DiagramSVG';
 import { newId, repo, slugify, type Project } from '../projects';
 import { RepoForm, emptyRepo, repoValid, type RepoFields } from './RepoForm';
@@ -13,6 +14,7 @@ const label: React.CSSProperties = { display: 'block', fontWeight: 500, marginBo
 
 export function CreateProject({ open, onClose, existing }: { open: boolean; onClose: () => void; existing: string[] }) {
   const [step, setStep] = useState<1 | 2 | 'repo'>(1);
+  const [importing, setImporting] = useState(false);
   const [rf, setRf] = useState<RepoFields>(emptyRepo);
   const [rerr, setRerr] = useState<{ message: string; kind: string } | null>(null);
   const [name, setName] = useState('');
@@ -99,7 +101,8 @@ export function CreateProject({ open, onClose, existing }: { open: boolean; onCl
   };
 
   return (
-    <Modal open={open} onClose={close} width={step === 2 ? 1040 : 480}>
+    <>
+    <Modal open={open && !importing} onClose={close} width={step === 2 ? 1040 : 480}>
       {step === 'repo' ? (
         <form onSubmit={connectRepo} style={{ padding: 24 }}>
           <h2 style={{ margin: '0 0 4px', fontSize: 18 }}>Connect a GitHub repo</h2>
@@ -124,6 +127,11 @@ export function CreateProject({ open, onClose, existing }: { open: boolean; onCl
             <Terminal size={20} style={{ color: 'var(--ok)', flex: 'none' }} />
             <div><b style={{ fontSize: 13.5 }}>Connect to Claude Code</b><div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 2, lineHeight: 1.4 }}>Watch the diagram build live as Claude Code designs it (read-only).</div></div>
             <ArrowRight size={15} style={{ marginLeft: 'auto', color: 'var(--ok)' }} />
+          </button>
+          <button type="button" data-testid="from-terraform" onClick={() => setImporting(true)} style={{ all: 'unset', boxSizing: 'border-box', cursor: 'pointer', width: '100%', display: 'flex', gap: 12, alignItems: 'center', padding: '12px 14px', borderRadius: 12, border: '1.5px dashed var(--muted)', background: 'var(--panel-2)', marginBottom: 18, marginTop: -6 }}>
+            <FileInput size={20} style={{ color: 'var(--muted)', flex: 'none' }} />
+            <div><b style={{ fontSize: 13.5 }}>Import Terraform</b><div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 2, lineHeight: 1.4 }}>Turn a folder or .zip of Terraform into a diagram you can edit.</div></div>
+            <ArrowRight size={15} style={{ marginLeft: 'auto', color: 'var(--muted)' }} />
           </button>
           <label style={{ display: 'block', marginBottom: 16 }}>
             <span style={label}>Name <span style={{ color: 'var(--err)' }}>*</span></span>
@@ -176,5 +184,8 @@ export function CreateProject({ open, onClose, existing }: { open: boolean; onCl
         </div>
       )}
     </Modal>
+    {/* a sibling, not a child: Cancel returns here; a finished import navigates away to the new project */}
+    <ImportTerraform open={open && importing} onClose={() => setImporting(false)} existing={existing} />
+    </>
   );
 }
