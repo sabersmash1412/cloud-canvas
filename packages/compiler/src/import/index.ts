@@ -311,7 +311,7 @@ export async function importTerraform(files: TfFile[], opts: ImportOptions): Pro
     if (m.version && m.version !== def.module.version) extras.version = m.version;
     const added = Object.keys(gen).filter((k) => !(k in m.inputs));
     if (Object.keys(extras).length) { n.extras = extras; preserved.push({ nodeId: n.id, keys: Object.keys(extras) }); }
-    if (added.length) additions.push({ nodeId: n.id, keys: added });
+    if (added.length) { additions.push({ nodeId: n.id, keys: added }); n.notInSource = added; }
     // companion modules we regenerate: say so when they differ from the imported ones
     for (const c of out.companions) {
       const imported = mods.find((x) => x.label === c.label);

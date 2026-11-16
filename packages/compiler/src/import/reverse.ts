@@ -109,6 +109,9 @@ export const REVERSE: Record<string, (c: RC) => Props> = {
       cpu: num(c, sv.cpu),
       memory: num(c, sv.memory),
       desiredCount: num(c, sv.desired_count),
+      // an absent setting is read as "not set / module default", never as an invented value
+      user: str(c, cd.user) ?? '',
+      readonlyRoot: bool(c, cd.readonly_root_filesystem) ?? true,
     } as Props;
   },
 

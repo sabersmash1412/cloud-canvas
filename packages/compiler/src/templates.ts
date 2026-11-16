@@ -22,7 +22,7 @@ const e = (source: string, target: string): GraphEdge => ({ id: `${source}-${tar
 const graph = (project: ProjectMeta, nodes: N[], edges: GraphEdge[]): Graph => ({ schemaVersion: '1.0.0', project, nodes, edges });
 
 const lambda = (name: string): Props => ({ name, runtime: 'nodejs20.x', handler: 'index.handler', sourcePath: './src/handler', memory: 256, timeout: 10 });
-const ecs = (name: string): Props => ({ name, image: 'public.ecr.aws/nginx/nginx:stable', containerPort: 8080, cpu: 512, memory: 1024, desiredCount: 2, healthCheckPath: '/health' });
+const ecs = (name: string): Props => ({ name, image: 'public.ecr.aws/nginx/nginx:stable', containerPort: 8080, cpu: 512, memory: 1024, desiredCount: 2, healthCheckPath: '/health', user: '1000:1000', readonlyRoot: true });
 const pg = (): Props => ({ name: 'db', engineVersion: '16.4', instanceClass: 'db.t4g.medium', storage: 50, dbName: 'app', multiAz: true, backupDays: 7 });
 const mysql = (): Props => ({ name: 'db', engineVersion: '8.0.40', instanceClass: 'db.t4g.medium', storage: 50, dbName: 'app', multiAz: true, backupDays: 7 });
 const bucket = (name: string): Props => ({ name, versioning: true, forceDestroy: false });

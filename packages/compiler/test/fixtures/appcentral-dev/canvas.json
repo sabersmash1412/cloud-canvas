@@ -68,7 +68,9 @@
         "cpu": 512,
         "memory": 1024,
         "desiredCount": 2,
-        "healthCheckPath": "/health"
+        "healthCheckPath": "/health",
+        "user": "",
+        "readonlyRoot": false
       }
     },
     {

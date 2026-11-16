@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 import { applyEdgeChanges, applyNodeChanges, type Edge, type EdgeChange, type Node, type NodeChange } from '@xyflow/react';
 import {
-  AZ_LETTERS, CATALOG, SUB, TIER_ORDER, defaultProps, inSubnetPos, migrateGraph, subnetCell, subnetId, subnetNode, suggestCidr, tiersOf, vpcSize,
+  type Finding, AZ_LETTERS, CATALOG, SUB, TIER_ORDER, defaultProps, inSubnetPos, migrateGraph, subnetCell, subnetId, subnetNode, suggestCidr, tiersOf, vpcSize,
   type Diagnostic, type Graph, type GraphNode, type ProjectMeta, type Props, type Tier,
 } from '@cloudcanvas/compiler';
 
-export type CNode = Node<{ type: string; properties: Props; label?: string; extras?: Record<string, unknown>; change?: 'added' | 'changed' | 'removed' }>;
+export type CNode = Node<{ type: string; properties: Props; label?: string; extras?: Record<string, unknown>; notInSource?: string[]; change?: 'added' | 'changed' | 'removed' }>;
 export type CEdge = Edge;
 
 const CONTAINER_KIND: Record<string, string> = { 'aws.vpc': 'vpc', 'aws.subnet': 'subnet' };
@@ -21,6 +21,9 @@ interface State extends Snap {
   notice: string | null;
   /** repo-linked projects: the canvas can be inspected but never changed */
   readOnly: boolean;
+  findings: Finding[];
+  setFindings: (f: Finding[]) => void;
+  applyFix: (f: Finding) => void;
   setDiagnostics: (d: Diagnostic[]) => void;
   connectingFrom: string | null; // node type
   dark: boolean;
@@ -96,7 +99,7 @@ function toRF(n: GraphNode): CNode {
     ...(n.type === 'aws.subnet' ? { extent: 'parent' as const } : {}),
     ...(kind ? { width: w, height: h, style: { width: w, height: h } } : {}),
     ...(n.type === 'aws.vpc' ? { zIndex: -1 } : {}),
-    data: { type: n.type, properties: n.properties, ...(n.label ? { label: n.label } : {}), ...(n.extras ? { extras: n.extras } : {}) },
+    data: { type: n.type, properties: n.properties, ...(n.label ? { label: n.label } : {}), ...(n.extras ? { extras: n.extras } : {}), ...(n.notInSource ? { notInSource: n.notInSource } : {}) },
   };
 }
 
@@ -125,6 +128,7 @@ export function toGraph(nodes: CNode[], edges: CEdge[], project: ProjectMeta, pa
         properties: n.data.properties,
         ...(n.data.label ? { label: n.data.label } : {}),
         ...(n.data.extras ? { extras: n.data.extras } : {}),
+        ...(n.data.notInSource ? { notInSource: n.data.notInSource } : {}),
       };
     }),
     edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
@@ -157,6 +161,14 @@ export const useStore = create<State>((set, get) => ({
   diagnostics: [],
   notice: null,
   readOnly: false,
+  findings: [],
+  setFindings: (findings) => set({ findings }),
+  applyFix: (f) => {
+    const s = get();
+    if (s.readOnly || !f.fix) return;
+    s.checkpoint();
+    set((st) => ({ nodes: st.nodes.map((n) => (n.id === f.fix!.nodeId ? { ...n, data: { ...n.data, properties: { ...n.data.properties, ...f.fix!.set } } } : n)) }));
+  },
   setDiagnostics: (diagnostics) => set({ diagnostics }),
   connectingFrom: null,
   dark: typeof localStorage !== 'undefined' ? localStorage.getItem('cc-dark') !== '0' : true,

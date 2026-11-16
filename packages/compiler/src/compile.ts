@@ -1,8 +1,8 @@
-import { CATALOG, Ctx, Resolved, snake } from './catalog';
+import { CATALOG, Ctx, Resolved, defaultProps, snake } from './catalog';
 import { fmtValue, printModule, quote, Raw, raw, type HclValue } from './hcl';
 import { pipelineYaml } from './pipeline';
 import { validateGraph } from './validate';
-import { fromHclJson } from './import/hclJson';
+import { fromHclJson, toJson } from './import/hclJson';
 import type { BlockRange, CompileResult, CompiledFile, DetailInput, DetailRef, Diagnostic, Graph, ModuleOutput, NodeDetail } from './types';
 
 export const GENERATOR = 'cloud-canvas@0.1.0';
@@ -21,6 +21,8 @@ export function compile(g: Graph, opts: CompileOptions = {}): CompileResult {
   // ── resolve nodes → labelled resources (deterministic, collision-safe)
   const used = new Set<string>();
   const resolved = new Map<string, Resolved>();
+  // fields added to the catalog after a project was saved fall back to their (compliant) defaults
+  g = { ...g, nodes: g.nodes.map((n) => (CATALOG[n.type] ? { ...n, properties: { ...defaultProps(n.type), ...n.properties } } : n)) };
   const sorted = [...g.nodes]
     .filter((n) => CATALOG[n.type])
     .sort((a, b) => TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type) || String(a.properties.name).localeCompare(String(b.properties.name)) || a.id.localeCompare(b.id));
@@ -168,7 +170,7 @@ export function compile(g: Graph, opts: CompileOptions = {}): CompileResult {
 
   const modules: Record<string, ModuleOutput> = {};
   for (const { r, res, generated } of built)
-    modules[r.node.id] = { label: r.label, generated, ...(res.usEast1 ? { usEast1: true } : {}), companions: (res.extraModules ?? []).map((x) => ({ label: x.label, source: x.source, inputs: x.inputs })), rawBlocks: res.rawBlocks ?? [] };
+    modules[r.node.id] = { label: r.label, generated, effective: toJson(res.inputs as HclValue) as Record<string, unknown>, ...(res.usEast1 ? { usEast1: true } : {}), companions: (res.extraModules ?? []).map((x) => ({ label: x.label, source: x.source, inputs: x.inputs })), rawBlocks: res.rawBlocks ?? [] };
 
   const tagEntries: [string, string][] = [
     ['Project', g.project.name],

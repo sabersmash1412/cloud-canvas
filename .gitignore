@@ -3,3 +3,10 @@ dist
 .DS_Store
 *.log
 .terraform
+
+# Confidential compliance material: never commit (any folder named private/)
+private/
+*.xlsx
+*.xls
+*.xlsm
+*.csv

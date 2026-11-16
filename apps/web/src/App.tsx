@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { CATALOG, edgeRule } from '@cloudcanvas/compiler';
 import { toGraph, useStore } from './store';
 import { useCompile } from './useCompile';
+import { useFindings } from './useFindings';
 import { ResourceNode, SubnetNode, VpcNode } from './components/nodes';
 import { CCEdge } from './components/edge';
 import { Palette } from './components/Palette';
@@ -149,6 +150,8 @@ function Canvas({ repoView }: { repoView: { ctl: RepoCtl; viewing: HistoryEntry 
 function Editor({ project: proj }: { project: Project }) {
   const linked = !!proj.source;
   const result = useCompile({ lenient: linked });
+  const findings = useFindings(result);
+  useEffect(() => useStore.getState().setFindings(findings), [findings]);
   const { project, setProject, dark, toggleDark, undo, redo, load, clear, past, future, nodes, edges, passthrough } = useStore();
   const { fitView } = useReactFlow();
   const file = useRef<HTMLInputElement>(null);

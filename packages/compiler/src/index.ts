@@ -14,3 +14,4 @@ export * from './history/diff';
 export * from './history/history';
 export { GitHubProvider, GitHubError } from './history/github';
 export type { GitHubOptions } from './history/github';
+export * from './rules';

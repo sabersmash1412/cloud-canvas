@@ -129,6 +129,7 @@ function grants(c: Ctx): { actions: string[]; resources: HclValue[] }[] {
 
 export const EDGE_RULES: EdgeRule[] = [
   { source: 'aws.alb', target: 'aws.ecs_fargate', label: 'routes to' },
+  { source: 'aws.alb', target: 'aws.s3', label: 'writes access logs to' },
   { source: 'aws.ecs_fargate', target: 'aws.rds_postgres', label: 'connects to' },
   { source: 'aws.ecs_fargate', target: 'aws.rds_mysql', label: 'connects to' },
   { source: 'aws.lambda', target: 'aws.rds_postgres', label: 'connects to' },
@@ -233,6 +234,12 @@ function rdsDef(engine: 'postgres' | 'mysql'): NodeDef {
           deletion_protection: isProd(c),
           skip_final_snapshot: !isProd(c),
           performance_insights_enabled: true,
+          // encrypt in transit: refuse non-TLS connections
+          ...(pg ? { parameters: [{ name: 'rds.force_ssl', value: '1' }] } : { parameters: [{ name: 'require_secure_transport', value: 'ON' }] }),
+          // database audit logging
+          enabled_cloudwatch_logs_exports: pg ? ['postgresql', 'upgrade'] : ['audit', 'error', 'general', 'slowquery'],
+          create_cloudwatch_log_group: true,
+          cloudwatch_log_group_retention_in_days: 365,
         },
       };
     },
@@ -288,6 +295,7 @@ const ALL: NodeDef[] = [
         create_flow_log_cloudwatch_log_group: true,
         create_flow_log_cloudwatch_iam_role: true,
         flow_log_max_aggregation_interval: 60,
+        flow_log_cloudwatch_log_group_retention_in_days: 365,
       });
       return { inputs };
     },
@@ -392,6 +400,7 @@ const ALL: NodeDef[] = [
       };
       if (https) ingress.https = { from_port: 443, to_port: 443, ip_protocol: 'tcp', description: 'HTTPS', cidr_ipv4: src };
 
+      const logBucket = c.outgoing('aws.s3')[0];
       return {
         inputs: {
           name: `${prefix(c)}-${c.self.p.name}`.slice(0, 32),
@@ -404,6 +413,7 @@ const ALL: NodeDef[] = [
           drop_invalid_header_fields: true,
           security_group_ingress_rules: ingress,
           security_group_egress_rules: { all: { ip_protocol: '-1', cidr_ipv4: c.ref(v, 'vpc_cidr_block') } },
+          ...(logBucket ? { access_logs: { bucket: c.ref(logBucket, 's3_bucket_id'), enabled: true, prefix: String(c.self.p.name) } } : {}),
           listeners,
           target_groups: tgs,
         },
@@ -562,6 +572,8 @@ const ALL: NodeDef[] = [
       sel('memory', 'Memory (MiB)', 1024, [512, 1024, 2048, 4096, 8192]),
       n('desiredCount', 'Desired count', 2, { min: 1, max: 100 }),
       s('healthCheckPath', 'Health check path', '/health', { help: 'Used by the ALB target group.' }),
+      s('user', 'Container user', '1000:1000', { help: 'Non-root user (uid:gid) the container runs as. Leave empty to use the image’s own USER.', pattern: '^(\\d+|[a-z_][a-z0-9_-]*)(:(\\d+|[a-z_][a-z0-9_-]*))?$' }),
+      b('readonlyRoot', 'Read-only root filesystem', true, { help: 'Prevents writes to the container filesystem. Turn off only if the app must write outside mounted volumes.' }),
     ],
     build(c) {
       const v = c.vpc!;
@@ -578,7 +590,10 @@ const ALL: NodeDef[] = [
           description: 'From load balancer',
           source_security_group_id: c.ref(alb, 'security_group_id'),
         };
-      rules.egress_all = { type: 'egress', from_port: 0, to_port: 0, protocol: '-1', cidr_blocks: ['0.0.0.0/0'] };
+      // Deny by default: only HTTPS out (registry pulls, AWS APIs through NAT). Services in the VPC are reached through the VPC range.
+      rules.egress_https = { type: 'egress', from_port: 443, to_port: 443, protocol: 'tcp', description: 'HTTPS to AWS APIs and registries', cidr_blocks: ['0.0.0.0/0'] };
+      for (const db of [...c.outgoing('aws.rds_postgres'), ...c.outgoing('aws.rds_mysql')])
+        rules[`egress_${db.label}`] = { type: 'egress', from_port: db.node.type === 'aws.rds_mysql' ? 3306 : 5432, to_port: db.node.type === 'aws.rds_mysql' ? 3306 : 5432, protocol: 'tcp', description: `To ${db.p.name}`, cidr_blocks: [c.ref(v, 'vpc_cidr_block')] };
 
       const g = grants(c);
       const svc: Record<string, HclValue> = {
@@ -593,7 +608,8 @@ const ALL: NodeDef[] = [
             image: String(p.image),
             essential: true,
             port_mappings: [{ name: key, containerPort: Number(p.containerPort), hostPort: Number(p.containerPort), protocol: 'tcp' }],
-            readonly_root_filesystem: false,
+            readonly_root_filesystem: Boolean(p.readonlyRoot ?? true),
+            ...(p.user ? { user: String(p.user) } : {}),
           },
         },
         security_group_rules: rules,
@@ -749,6 +765,7 @@ const ALL: NodeDef[] = [
     fields: [nameField('assets'), b('versioning', 'Versioning', true), b('forceDestroy', 'Force destroy', false, { help: 'Allow deleting a non-empty bucket. Keep off in production.' })],
     build(c) {
       const cf = c.incoming('aws.cloudfront')[0];
+      const logSource = c.incoming('aws.alb')[0];
       const base: Record<string, HclValue> = {
         bucket: `${prefix(c)}-${c.self.p.name}`,
         force_destroy: Boolean(c.self.p.forceDestroy),
@@ -758,6 +775,8 @@ const ALL: NodeDef[] = [
         block_public_policy: true,
         ignore_public_acls: true,
         restrict_public_buckets: true,
+        attach_deny_insecure_transport_policy: true,
+        ...(logSource ? { attach_elb_log_delivery_policy: true, attach_lb_log_delivery_policy: true } : {}),
         versioning: { enabled: Boolean(c.self.p.versioning) },
         server_side_encryption_configuration: { rule: { apply_server_side_encryption_by_default: { sse_algorithm: 'AES256' } } },
       };

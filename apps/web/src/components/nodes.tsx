@@ -5,6 +5,13 @@ import { useStore, type CNode } from '../store';
 
 const icon = (name: string) => `/aws-icons/${name}.svg`;
 
+function Compliance({ id }: { id: string }) {
+  const f = useStore((s) => s.findings).filter((x) => x.nodeId === id);
+  if (!f.length) return null;
+  const high = f.some((x) => x.severity === 'high');
+  return <div className="badge" data-testid="compliance-badge" title={f.map((x) => `${x.rule} · ${x.title}`).join('\n')} style={{ right: 'auto', left: 12, background: high ? 'var(--err)' : 'var(--warn)' }}>⚑{f.length}</div>;
+}
+
 function Badges({ id }: { id: string }) {
   const d = useStore((s) => s.diagnostics);
   const mine = d.filter((x: Diagnostic) => x.nodeId === id);
@@ -25,6 +32,7 @@ export const ResourceNode = memo(({ id, data, selected }: NodeProps<CNode>) => {
     <div className={`cc-node ${selected ? 'selected' : ''} ${invalid ? 'invalid' : ''} ${data.change ? 'chg-' + data.change : ''}`}>
       {data.change && <div className={`chg-tag ${data.change}`}>{data.change === 'added' ? '+' : data.change === 'removed' ? '−' : '~'}</div>}
       <Badges id={id} />
+      <Compliance id={id} />
       <Handle type="target" position={Position.Left} />
       <div className="tile"><img src={icon(def.icon)} alt="" draggable={false} /></div>
       <div className="type">{def.label}</div>

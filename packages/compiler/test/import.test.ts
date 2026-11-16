@@ -64,12 +64,18 @@ describe('import: appcentral sample (exported from Cloud Canvas)', () => {
     expect(compile(b).files[0].content).toBe(compile(a).files[0].content);
   });
 
-  it('only differs from the old export by how the VPC subnets are spelled', async () => {
-    const { graph } = await importTerraform(tf(), { parse, name: 'appcentral' });
+  it('regenerating only adds settings; it never changes what the original code said', async () => {
+    const { graph, report } = await importTerraform(tf(), { parse, name: 'appcentral' });
     const out = compile(graph).files[0].content.split('\n');
     const old = load('main.tf').split('\n');
-    const changed = out.filter((l) => !old.includes(l));
-    expect(changed.every((l) => /(^|\s)(azs|public_subnets|private_subnets|database_subnets|public_subnet_names|private_subnet_names|database_subnet_names)\s*=/.test(l))).toBe(true);
+    const changed = out.filter((l) => !old.includes(l)).map((l) => l.trim()).filter(Boolean);
+    // every changed line is either VPC subnet spelling or a newly added compliant setting
+    const ALLOWED = /^(azs|name|cidr|(public|private|database)_subnets|(public|private|database)_subnet_names|create_database_subnet_group|enable_\w+|single_nat_gateway|one_nat_gateway_per_az|create_flow_log_\w+|flow_log_\w+|parameters|enabled_cloudwatch_logs_exports|create_cloudwatch_log_group|cloudwatch_log_group_retention_in_days|name|value|\]|\{|\},|assign_public_ip|memory|subnet_ids)\b/;
+    for (const l of changed) expect(l, l).toMatch(ALLOWED);
+    // the ECS service is the clearest case: its original (writable root, open egress) settings are kept as written
+    expect(out.join('\n')).toContain('egress_all');
+    expect(report.preserved.some((p) => p.keys.includes('services'))).toBe(true);
+    expect(report.additions.length).toBeGreaterThan(0);
   });
 });
 

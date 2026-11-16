@@ -15,6 +15,11 @@ export interface GraphNode {
    * Re-emitted verbatim (in hcl2json form: expressions are "${...}" strings); not editable on the canvas.
    */
   extras?: Record<string, unknown>;
+  /**
+   * Imported nodes only: module inputs Cloud Canvas would generate that the imported Terraform did not contain.
+   * Compliance rules must not count these as present, because the original code lacks them.
+   */
+  notInSource?: string[];
 }
 
 export interface GraphEdge {
@@ -110,6 +115,8 @@ export interface ModuleOutput {
   label: string;
   /** inputs generated from the catalog (before imported extras are merged in) */
   generated: Record<string, unknown>;
+  /** what the module call really contains: generated inputs overridden by imported ones (hcl2json form) */
+  effective: Record<string, unknown>;
   /** the module is given `providers = { aws = aws.us_east_1 }` separately from its inputs */
   usEast1?: boolean;
   companions: { label: string; source: string; inputs: Record<string, unknown> }[];
