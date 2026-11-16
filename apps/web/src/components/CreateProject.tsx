@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, GitBranch, LayoutTemplate, Loader2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, GitBranch, LayoutTemplate, Loader2, Terminal } from 'lucide-react';
 import { buildTemplate, SCRATCH_TEMPLATE_ID, TEMPLATES, type ProjectMeta } from '@cloudcanvas/compiler';
 import { Modal } from './Modal';
 import { DiagramSVG } from './DiagramSVG';
@@ -41,6 +41,18 @@ export function CreateProject({ open, onClose, existing }: { open: boolean; onCl
     onClose();
     goProject(p.id);
     setTimeout(reset, 300);
+  };
+
+  const createLive = async () => {
+    if (busy) return;
+    setTouched(true);
+    const nm = name.trim() || 'Claude Code session';
+    if (existing.includes(nm.toLowerCase())) return;
+    setBusy(true);
+    const now = Date.now();
+    const p: Project = { id: newId(), name: nm, description: 'Mirrors what Claude Code is building', createdAt: now, updatedAt: now, graph: { schemaVersion: '1.0.0', project: { name: slugify(nm) || 'claude-session', environment, region }, nodes: [], edges: [] }, live: { kind: 'claude-code' } };
+    await repo.save(p);
+    onClose(); goProject(p.id); setTimeout(reset, 300);
   };
 
   const connectRepo = async (e: React.FormEvent) => {
@@ -107,6 +119,11 @@ export function CreateProject({ open, onClose, existing }: { open: boolean; onCl
             <GitBranch size={20} style={{ color: 'var(--accent)', flex: 'none' }} />
             <div><b style={{ fontSize: 13.5 }}>Connect a GitHub repo</b><div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 2, lineHeight: 1.4 }}>Follow a Terraform repo. The diagram stays in step with every commit (read-only).</div></div>
             <ArrowRight size={15} style={{ marginLeft: 'auto', color: 'var(--accent)' }} />
+          </button>
+          <button type="button" data-testid="from-claude" onClick={createLive} disabled={busy || !!nameErr && touched} style={{ all: 'unset', boxSizing: 'border-box', cursor: 'pointer', width: '100%', display: 'flex', gap: 12, alignItems: 'center', padding: '12px 14px', borderRadius: 12, border: '1.5px dashed var(--ok)', background: 'color-mix(in srgb, var(--ok) 10%, transparent)', marginBottom: 18, marginTop: -6 }}>
+            <Terminal size={20} style={{ color: 'var(--ok)', flex: 'none' }} />
+            <div><b style={{ fontSize: 13.5 }}>Connect to Claude Code</b><div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 2, lineHeight: 1.4 }}>Watch the diagram build live as Claude Code designs it (read-only).</div></div>
+            <ArrowRight size={15} style={{ marginLeft: 'auto', color: 'var(--ok)' }} />
           </button>
           <label style={{ display: 'block', marginBottom: 16 }}>
             <span style={label}>Name <span style={{ color: 'var(--err)' }}>*</span></span>

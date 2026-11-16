@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@cloudcanvas/compiler": "workspace:*",
+    "@cloudcanvas/mcp": "workspace:*",
     "@monaco-editor/react": "^4.6.0",
     "@xyflow/react": "^12.3.0",
     "fflate": "^0.8.2",

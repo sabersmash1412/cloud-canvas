@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "cloud-canvas": {
+      "command": "./packages/mcp/node_modules/.bin/tsx",
+      "args": ["./packages/mcp/src/server.ts"]
+    }
+  }
+}

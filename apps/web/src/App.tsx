@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Background, BackgroundVariant, ConnectionMode, Controls, MarkerType, MiniMap, ReactFlow, ReactFlowProvider, useReactFlow, type Connection, type OnConnectStart } from '@xyflow/react';
-import { ArrowLeft, Check, Cloud, Download, FileUp, GitBranch, Loader2, Moon, PanelRight, Redo2, Save, Sun, Trash2, Undo2 } from 'lucide-react';
+import { ArrowLeft, Check, Cloud, Download, FileUp, GitBranch, Loader2, Moon, PanelRight, Redo2, Save, Sun, Terminal, Trash2, Undo2 } from 'lucide-react';
 import { zipSync, strToU8 } from 'fflate';
 import { AnimatePresence, motion } from 'framer-motion';
 import { CATALOG, edgeRule } from '@cloudcanvas/compiler';
@@ -13,6 +13,8 @@ import { Palette } from './components/Palette';
 import { SidePanel } from './components/SidePanel';
 import { RepoBanner } from './components/HistoryView';
 import { snapshot } from './snapshot';
+import { useLive } from './live';
+import { LiveBanner } from './components/LiveBanner';
 import { diffGraphs, type HistoryEntry } from '@cloudcanvas/compiler';
 import { headOf, useRepoSync, type RepoCtl } from './history';
 import { repo, type Project } from './projects';
@@ -45,11 +47,21 @@ function Toast() {
   );
 }
 
-function Canvas({ repoView }: { repoView: { ctl: RepoCtl; viewing: HistoryEntry | null; base: HistoryEntry | null } | null }) {
+type LiveView = { feed: ReturnType<typeof useLive>; flash: boolean } | null;
+
+function Canvas({ repoView, liveView }: { repoView: { ctl: RepoCtl; viewing: HistoryEntry | null; base: HistoryEntry | null } | null; liveView: LiveView }) {
   const live = useStore();
   const { addNode, addEdge, select, setConnecting } = live;
   const selected = live.selected;
   const view = useMemo(() => {
+    if (liveView) {
+      const g = liveView.feed.msg?.graph;
+      if (!g || !g.nodes.length) return null;
+      // for a few seconds after an update, colour what just changed versus the previous update
+      const prev = liveView.flash ? liveView.feed.prev?.graph ?? null : null;
+      const diff = prev ? diffGraphs(prev, g) : liveView.flash && !liveView.feed.prev ? diffGraphs(null, g) : null;
+      return snapshot({ graph: g, base: prev, diff }, selected);
+    }
     const e = repoView?.viewing;
     if (!repoView || !e?.graph) return null;
     const base = repoView.base?.graph ?? null;
@@ -57,8 +69,8 @@ function Canvas({ repoView }: { repoView: { ctl: RepoCtl; viewing: HistoryEntry 
     const latest = repoView.ctl.entries?.find((x) => x.graph) ?? null;
     const diff = base ? diffGraphs(base, e.graph) : e !== latest ? e.diff : null;
     return snapshot({ graph: e.graph, base, diff }, selected);
-  }, [repoView, selected]);
-  const linked = !!repoView;
+  }, [repoView, liveView?.feed.msg, liveView?.feed.prev, liveView?.flash, selected]);
+  const linked = !!repoView || !!liveView;
   const nodes = view ? view.nodes : live.nodes;
   const edges = view ? view.edges : live.edges;
   const readonly = linked;
@@ -66,9 +78,9 @@ function Canvas({ repoView }: { repoView: { ctl: RepoCtl; viewing: HistoryEntry 
   const onEdgesChange = readonly ? () => {} : live.onEdgesChange;
   const { screenToFlowPosition, fitView } = useReactFlow();
   const wrap = useRef<HTMLDivElement>(null);
-  // refit when a different version (or comparison) is shown
-  const shownKey = repoView ? `${repoView.viewing?.commit.sha}|${repoView.base?.commit.sha ?? ''}` : '';
-  useEffect(() => { if (shownKey) { const t = setTimeout(() => fitView({ duration: 250, padding: 0.15, maxZoom: 1 }), 80); return () => clearTimeout(t); } }, [shownKey, fitView]);
+  // refit when a different version (or comparison, or live update) is shown
+  const shownKey = liveView ? `live-${liveView.feed.msg?.seq ?? 0}` : repoView ? `${repoView.viewing?.commit.sha}|${repoView.base?.commit.sha ?? ''}` : '';
+  useEffect(() => { if (shownKey) { const t = setTimeout(() => fitView({ duration: 350, padding: 0.15, maxZoom: 1 }), 120); return () => clearTimeout(t); } }, [shownKey, fitView]);
 
   const isValid = useCallback((c: Connection) => {
     const s = nodes.find((n) => n.id === c.source), t = nodes.find((n) => n.id === c.target);
@@ -92,7 +104,8 @@ function Canvas({ repoView }: { repoView: { ctl: RepoCtl; viewing: HistoryEntry 
 
   return (
     <div ref={wrap} className="panel" style={{ flex: 1, position: 'relative', overflow: 'hidden', minWidth: 0 }}>
-      {repoView && <RepoBanner ctl={repoView.ctl} viewing={repoView.viewing} base={repoView.base} />}
+      {repoView && !liveView && <RepoBanner ctl={repoView.ctl} viewing={repoView.viewing} base={repoView.base} />}
+      {liveView && <LiveBanner feed={liveView.feed} />}
       <ReactFlow
         className={readonly ? 'readonly' : ''}
         nodesDraggable={!readonly}
@@ -128,7 +141,14 @@ function Canvas({ repoView }: { repoView: { ctl: RepoCtl; viewing: HistoryEntry 
         <Controls showInteractive={false} position="bottom-left" />
         <MiniMap pannable zoomable position="bottom-right" nodeColor={(n) => (n.type === 'vpc' || n.type === 'subnet' ? 'transparent' : '#8b7dff')} maskColor="rgba(0,0,0,.12)" />
       </ReactFlow>
-      {nodes.length === 0 && linked && (
+      {nodes.length === 0 && liveView && (
+        <div className="empty-hint" data-testid="live-empty"><div style={{ textAlign: 'center', color: 'var(--muted)', maxWidth: 420, lineHeight: 1.55 }}>
+          <Terminal size={36} style={{ opacity: .55, marginBottom: 10 }} />
+          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>{liveView.feed.status === 'connected' ? 'Waiting for Claude Code to design something' : 'Looking for the Cloud Canvas MCP server…'}</div>
+          <div style={{ marginTop: 6 }}>{liveView.feed.status === 'connected' ? 'Ask Claude Code to build infrastructure and the diagram appears here as it works.' : <>Open Claude Code in any project that has the <b>cloud-canvas</b> MCP server added. See the README in <span className="mono">packages/mcp</span>.</>}</div>
+        </div></div>
+      )}
+      {nodes.length === 0 && linked && !liveView && (
         <div className="empty-hint"><div style={{ textAlign: 'center', color: 'var(--muted)', maxWidth: 360, lineHeight: 1.5 }}>
           {repoView!.ctl.sync.status === 'error' ? 'Could not load this repository. See the History tab.' : repoView!.ctl.entries ? 'No Terraform architecture could be read from this repository yet.' : 'Reading the repository…'}
         </div></div>
@@ -148,7 +168,8 @@ function Canvas({ repoView }: { repoView: { ctl: RepoCtl; viewing: HistoryEntry 
 }
 
 function Editor({ project: proj }: { project: Project }) {
-  const linked = !!proj.source;
+  const isLive = !!proj.live;
+  const linked = !!proj.source || isLive; // both kinds are read-only mirrors
   const result = useCompile({ lenient: linked });
   const findings = useFindings(result);
   useEffect(() => useStore.getState().setFindings(findings), [findings]);
@@ -195,8 +216,22 @@ function Editor({ project: proj }: { project: Project }) {
     viewSha, cmpSha, view: setViewSha, compare: setCmpSha, reload: sync.reload, setToken: sync.setToken,
   } : null;
 
+  // ── Claude Code live sessions: mirror whatever the local MCP server last published
+  const liveFeed = useLive(isLive);
+  const [flash, setFlash] = useState(0);
+  useEffect(() => { if (liveFeed.msg) setFlash((n) => n + 1); }, [liveFeed.msg?.seq]);
+  useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(0), 4500); return () => clearTimeout(t); }, [flash]);
+  useEffect(() => {
+    const g = liveFeed.msg?.graph;
+    if (!isLive || !g || !g.nodes.length) return;
+    // remember the latest design so the dashboard card and a reload are not blank
+    const cur = live.current;
+    live.current = { ...cur, graph: g };
+    void repo.save(live.current);
+  }, [liveFeed.msg?.seq]);
+
   // the live store mirrors the latest commit, so the list, issues and code tabs describe what is on screen
-  const mirrored = shownEntry?.graph ?? null;
+  const mirrored = isLive ? (liveFeed.msg?.graph ?? (proj.graph.nodes.length ? proj.graph : null)) : (shownEntry?.graph ?? null);
   useEffect(() => {
     useStore.getState().setReadOnly(linked);
     if (linked) { const st = useStore.getState(); st.openGraph(mirrored ?? proj.graph); }
@@ -256,13 +291,16 @@ function Editor({ project: proj }: { project: Project }) {
   };
 
   const src = proj.source;
+  const liveView = isLive ? { feed: liveFeed, flash: flash > 0 } : null;
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 12, gap: 12 }}>
       <header className="panel" style={{ height: 52, display: 'flex', alignItems: 'center', gap: 14, padding: '0 14px', flex: 'none' }}>
         <button className="btn icon" data-testid="back" title="All projects" onClick={goHome}><ArrowLeft size={15} /></button>
         <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg,#8b7dff,#5b8cff)', display: 'grid', placeItems: 'center' }}><Cloud size={16} color="#fff" /></div>
         <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={60} aria-label="Project name" style={{ all: 'unset', fontWeight: 600, width: Math.max(90, title.length * 8.5), maxWidth: 300 }} />
-        {linked && src ? (
+        {isLive ? (
+          <span data-testid="live-chip" className="kbd" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 8px', color: liveFeed.status === 'connected' ? 'var(--ok)' : 'var(--muted)' }}><Terminal size={12} />Claude Code · {liveFeed.status === 'connected' ? 'connected' : liveFeed.status === 'lost' ? 'reconnecting…' : 'looking for it…'}</span>
+        ) : linked && src ? (
           <a data-testid="repo-chip" href={`https://github.com/${src.owner}/${src.repo}`} target="_blank" rel="noreferrer" className="kbd" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, textDecoration: 'none', color: 'var(--text)', padding: '3px 8px' }}>
             <GitBranch size={12} />{src.owner}/{src.repo} <span style={{ color: 'var(--muted)' }}>{src.branch}</span>
           </a>
@@ -271,7 +309,7 @@ function Editor({ project: proj }: { project: Project }) {
             {saved === 'saving' ? <><Loader2 size={12} className="spin" /> Saving</> : <><Check size={12} /> Saved</>}
           </span>
         )}
-        {linked ? (
+        {isLive ? null : linked ? (
           <span style={{ color: 'var(--muted)', fontSize: 11.5 }} data-testid="sync-status">
             {sync.sync.status === 'loading' && !entries ? 'Syncing…' : sync.sync.status === 'error' ? 'Sync failed' : sync.paused ? 'Live updates paused' : sync.syncedAt ? 'Following the repo · checked just now' : ''}
           </span>
@@ -302,7 +340,7 @@ function Editor({ project: proj }: { project: Project }) {
       </header>
       <div style={{ flex: 1, display: 'flex', gap: 12, minHeight: 0, position: 'relative' }}>
         {!linked && <Palette />}
-        <Canvas repoView={ctl ? { ctl, viewing: shownEntry, base: shownBase } : null} />
+        <Canvas repoView={ctl ? { ctl, viewing: shownEntry, base: shownBase } : null} liveView={liveView} />
         {panel && <SidePanel result={result} projectId={proj.id} repoCtl={ctl} />}
         <AnimatePresence>
           {toast && (

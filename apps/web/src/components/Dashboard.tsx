@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Cloud, Copy, Download, FileInput, FolderPlus, GitBranch, LayoutGrid, MoreHorizontal, Moon, Pencil, Plus, Search, Sun, Trash2 } from 'lucide-react';
+import { Cloud, Copy, Download, FileInput, FolderPlus, GitBranch, Terminal, LayoutGrid, MoreHorizontal, Moon, Pencil, Plus, Search, Sun, Trash2 } from 'lucide-react';
 import { ago, newId, repo, type Project } from '../projects';
 import { goProject } from '../router';
 import { useStore } from '../store';
@@ -160,7 +160,12 @@ function Card({ p, i, onRename, onDelete, onDuplicate }: { p: Project; i: number
             { label: 'Delete', icon: <Trash2 size={14} />, onClick: onDelete, danger: true },
           ]} />
         </div>
-        {p.source ? (
+        {p.live ? (
+          <div data-testid="card-live" style={{ minHeight: 35, fontSize: 12.5, lineHeight: 1.4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--ok)', fontWeight: 500 }}><Terminal size={13} />Live from Claude Code</div>
+            <div style={{ color: 'var(--muted)' }}>{count ? `${count} resource${count === 1 ? '' : 's'} last seen` : 'Waiting for a design'}</div>
+          </div>
+        ) : p.source ? (
           <div data-testid="card-repo" style={{ minHeight: 35, fontSize: 12.5, lineHeight: 1.4 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent)', fontWeight: 500 }}><GitBranch size={13} />{p.source.owner}/{p.source.repo}<span className="mono" style={{ color: 'var(--muted)', fontWeight: 400 }}>{p.source.branch}</span></div>
             <div style={{ color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.source.head ? `${p.source.head.message}` : 'Not synced yet'}</div>

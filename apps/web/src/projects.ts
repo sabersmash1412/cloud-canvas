@@ -13,6 +13,9 @@ export interface RepoSource {
   syncedAt?: number;
 }
 
+/** A project that mirrors what Claude Code is building, through the local Cloud Canvas MCP server. */
+export interface LiveSource { kind: 'claude-code' }
+
 export interface Project {
   id: string;
   name: string; // display name
@@ -22,6 +25,7 @@ export interface Project {
   /** the architecture: editable for normal projects; for repo-linked projects the latest readable commit */
   graph: Graph;
   source?: RepoSource;
+  live?: LiveSource;
 }
 
 /** Async on purpose: swapping localStorage for a real API/database later only touches this file. */
