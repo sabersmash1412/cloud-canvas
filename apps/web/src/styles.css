@@ -78,3 +78,19 @@ body { background: var(--bg); color: var(--text); font-family: Inter, system-ui,
 .resize-h { position: absolute; left: -7px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 5; }
 .resize-h::after { content: ''; position: absolute; left: 3px; top: 50%; height: 36px; width: 3px; margin-top: -18px; border-radius: 2px; background: var(--line); transition: background .15s; }
 .resize-h:hover::after { background: var(--accent); }
+
+/* architecture-diff colouring (History tab) */
+.chg-added .tile { outline: 2.5px solid var(--ok); outline-offset: 3px; }
+.chg-changed .tile { outline: 2.5px solid var(--warn); outline-offset: 3px; }
+.chg-removed .tile { outline: 2.5px dashed var(--err); outline-offset: 3px; opacity: .55; }
+.chg-removed .type { text-decoration: line-through; }
+.group-subnet.chg-added { box-shadow: 0 0 0 2.5px var(--ok); }
+.group-subnet.chg-changed { box-shadow: 0 0 0 2.5px var(--warn); }
+.group-subnet.chg-removed { box-shadow: 0 0 0 2.5px var(--err); opacity: .55; border-style: dashed; }
+.group-vpc.chg-changed { box-shadow: 0 0 0 2.5px var(--warn); }
+.chg-tag { position: absolute; top: -8px; left: 4px; width: 18px; height: 18px; border-radius: 9px; color: #fff; font-weight: 700; font-size: 13px; line-height: 17px; text-align: center; z-index: 3; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
+.chg-tag.added { background: var(--ok); } .chg-tag.changed { background: var(--warn); } .chg-tag.removed { background: var(--err); }
+.react-flow.readonly .react-flow__handle { display: none; }
+.react-flow.readonly .cc-node { cursor: default; }
+.react-flow.readonly .react-flow__edge.added .react-flow__edge-path { stroke: var(--ok) !important; stroke-width: 2.6; }
+.react-flow.readonly .react-flow__edge.removed .react-flow__edge-path { stroke: var(--err) !important; stroke-width: 2.6; stroke-dasharray: 6 5; }

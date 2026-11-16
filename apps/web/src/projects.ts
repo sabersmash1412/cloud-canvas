@@ -1,12 +1,27 @@
 import { migrateGraph, type Graph } from '@cloudcanvas/compiler';
 
+/** A project that follows a Git repository: its canvas is read-only and always shows the repo's latest architecture. */
+export interface RepoSource {
+  provider: 'github';
+  owner: string;
+  repo: string;
+  branch: string;
+  /** folder holding the Terraform ("" = repo root) */
+  path: string;
+  /** newest commit seen on the branch (for the folder) */
+  head?: { sha: string; message: string; author: string; date: string };
+  syncedAt?: number;
+}
+
 export interface Project {
   id: string;
   name: string; // display name
   description: string;
   createdAt: number;
   updatedAt: number;
+  /** the architecture: editable for normal projects; for repo-linked projects the latest readable commit */
   graph: Graph;
+  source?: RepoSource;
 }
 
 /** Async on purpose: swapping localStorage for a real API/database later only touches this file. */

@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, Code2, LayoutList, Search, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronRight, Code2, GitBranch, LayoutList, Search, XCircle } from 'lucide-react';
 import { CATALOG, type CompileResult, type Diagnostic } from '@cloudcanvas/compiler';
 import { useStore, type CNode } from '../store';
 import { CodeView, NodeCode } from './CodeView';
 import { FullConfig, RefChip, Row, ShowFull, Value, humanize } from './Config';
 import { DeleteNode, NodeForm } from './Form';
+import { HistoryView } from './HistoryView';
+import type { RepoCtl } from '../history';
 
-type Tab = 'list' | 'code' | 'issues';
+type Tab = 'list' | 'code' | 'issues' | 'history';
 
 /** Pick the few settings worth showing on a card: user-facing fields first, then derived wiring. */
 function summary(node: CNode, result: CompileResult) {
@@ -122,11 +124,11 @@ function Issues({ items, go }: { items: Diagnostic[]; go: (id: string) => void }
   );
 }
 
-export function SidePanel({ result }: { result: CompileResult }) {
+export function SidePanel({ result, repoCtl }: { result: CompileResult; projectId: string; repoCtl: RepoCtl | null }) {
   const nodes = useStore((s) => s.nodes);
   const selected = useStore((s) => s.selected);
   const diagnostics = useStore((s) => s.diagnostics);
-  const [tab, setTab] = useState<Tab>('list');
+  const [tab, setTab] = useState<Tab>(repoCtl ? 'history' : 'list');
   const [detail, setDetail] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [width, setWidth] = useState(() => Number(localStorage.getItem('cc-panel-w')) || 440);
@@ -178,6 +180,7 @@ export function SidePanel({ result }: { result: CompileResult }) {
             {errors ? <XCircle size={14} style={{ color: 'var(--err)' }} /> : issues.length ? <AlertTriangle size={14} style={{ color: 'var(--warn)' }} /> : <CheckCircle2 size={14} style={{ color: 'var(--ok)' }} />}
             Issues{issues.length > 0 && <span style={{ fontSize: 11, padding: '0 6px', borderRadius: 8, background: errors ? 'var(--err)' : 'var(--warn)', color: '#fff' }}>{issues.length}</span>}
           </button>
+          {repoCtl && <button className={`tabbtn ${tab === 'history' ? 'on' : ''}`} data-testid="tab-history" onClick={() => setTab('history')}><GitBranch size={14} /> History</button>}
           <div style={{ flex: 1 }} />
           {tab === 'list' && !node && (
             <div style={{ position: 'relative' }}>
@@ -188,7 +191,8 @@ export function SidePanel({ result }: { result: CompileResult }) {
         </div>
 
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          {tab === 'issues' ? <Issues items={issues} go={go} />
+          {tab === 'history' && repoCtl ? <HistoryView ctl={repoCtl} onToken={repoCtl.setToken} />
+            : tab === 'issues' ? <Issues items={issues} go={go} />
             : tab === 'code' ? <CodeView result={result} onSelect={(id) => { useStore.getState().select(id); }} />
             : node ? <Detail key={node.id} node={node} result={result} onBack={() => setDetail(null)} go={go} />
             : (

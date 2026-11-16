@@ -22,7 +22,8 @@ export const ResourceNode = memo(({ id, data, selected }: NodeProps<CNode>) => {
   const invalid = from ? !edgeRule(from, data.type) : false;
   if (!def) return null;
   return (
-    <div className={`cc-node ${selected ? 'selected' : ''} ${invalid ? 'invalid' : ''}`}>
+    <div className={`cc-node ${selected ? 'selected' : ''} ${invalid ? 'invalid' : ''} ${data.change ? 'chg-' + data.change : ''}`}>
+      {data.change && <div className={`chg-tag ${data.change}`}>{data.change === 'added' ? '+' : data.change === 'removed' ? '−' : '~'}</div>}
       <Badges id={id} />
       <Handle type="target" position={Position.Left} />
       <div className="tile"><img src={icon(def.icon)} alt="" draggable={false} /></div>
@@ -48,7 +49,7 @@ const resizer = (min: { w: number; h: number }) => ({
 });
 
 export const VpcNode = memo(({ id, data, selected }: NodeProps<CNode>) => (
-  <div className={`group-vpc ${selected ? 'selected' : ''}`}>
+  <div className={`group-vpc ${selected ? 'selected' : ''} ${data.change ? 'chg-' + data.change : ''}`}>
     <NodeResizer isVisible={selected} {...resizer({ w: 440, h: 220 })} />
     <Badges id={id} />
     <Corner icon="virtual-private-cloud-vpc" size={40} radius={13} />
@@ -63,7 +64,7 @@ export const VpcNode = memo(({ id, data, selected }: NodeProps<CNode>) => (
 export const SubnetNode = memo(({ id, data, selected }: NodeProps<CNode>) => {
   const color = tierColor(data.properties.tier);
   return (
-    <div className={`group-subnet ${selected ? 'selected' : ''}`} style={{ borderColor: color, background: `color-mix(in srgb, ${color} 9%, transparent)` }}>
+    <div className={`group-subnet ${selected ? 'selected' : ''} ${data.change ? 'chg-' + data.change : ''}`} style={{ borderColor: color, background: `color-mix(in srgb, ${color} 9%, transparent)` }}>
       <NodeResizer isVisible={selected} {...resizer({ w: 200, h: 110 })} />
       <Badges id={id} />
       <Corner icon={data.properties.tier === 'public' ? 'public-subnet' : 'private-subnet'} size={30} radius={7} />

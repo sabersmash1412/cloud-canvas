@@ -9,3 +9,8 @@ export * from './layout';
 export { parseCidr } from './cidr';
 export { importTerraform } from './import';
 export type { ImportOptions, ImportReport, ImportResult, TfFile, HclParser } from './import';
+export * from './history/types';
+export * from './history/diff';
+export * from './history/history';
+export { GitHubProvider, GitHubError } from './history/github';
+export type { GitHubOptions } from './history/github';

@@ -1,16 +1,20 @@
 import { useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, LayoutTemplate } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, GitBranch, LayoutTemplate, Loader2 } from 'lucide-react';
 import { buildTemplate, SCRATCH_TEMPLATE_ID, TEMPLATES, type ProjectMeta } from '@cloudcanvas/compiler';
 import { Modal } from './Modal';
 import { DiagramSVG } from './DiagramSVG';
 import { newId, repo, slugify, type Project } from '../projects';
+import { RepoForm, emptyRepo, repoValid, type RepoFields } from './RepoForm';
+import { describeError, headOf, setToken, syncRepo } from '../history';
 import { goProject } from '../router';
 
 const field: React.CSSProperties = { width: '100%', height: 36, padding: '0 12px', borderRadius: 9, border: '1px solid var(--line)', background: 'var(--panel-2)', color: 'var(--text)', outline: 'none', fontSize: 13 };
 const label: React.CSSProperties = { display: 'block', fontWeight: 500, marginBottom: 6 };
 
 export function CreateProject({ open, onClose, existing }: { open: boolean; onClose: () => void; existing: string[] }) {
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 'repo'>(1);
+  const [rf, setRf] = useState<RepoFields>(emptyRepo);
+  const [rerr, setRerr] = useState<{ message: string; kind: string } | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [environment, setEnvironment] = useState('dev');
@@ -25,7 +29,7 @@ export function CreateProject({ open, onClose, existing }: { open: boolean; onCl
   const selected = TEMPLATES.find((t) => t.id === tpl);
   const previewGraph = useMemo(() => buildTemplate(tpl, { name: 'preview', environment: 'dev', region: 'ap-southeast-1' }), [tpl]);
 
-  const reset = () => { setStep(1); setName(''); setDescription(''); setTpl(TEMPLATES[0].id); setTouched(false); setBusy(false); };
+  const reset = () => { setStep(1); setRf(emptyRepo); setRerr(null); setName(''); setDescription(''); setTpl(TEMPLATES[0].id); setTouched(false); setBusy(false); };
   const close = () => { onClose(); setTimeout(reset, 200); };
 
   const create = async (templateId: string) => {
@@ -37,6 +41,31 @@ export function CreateProject({ open, onClose, existing }: { open: boolean; onCl
     onClose();
     goProject(p.id);
     setTimeout(reset, 300);
+  };
+
+  const connectRepo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busy || !repoValid(rf)) return;
+    setBusy(true); setRerr(null);
+    const src = { provider: 'github' as const, owner: rf.owner.trim(), repo: rf.repo.trim().replace(/\.git$/, ''), branch: rf.branch.trim() || 'main', path: rf.path.trim().replace(/^\/+|\/+$/g, '') };
+    const id = newId();
+    try {
+      // verify it works before creating anything: a typo should not leave a broken project behind
+      const r = await syncRepo(src, rf.token, slugify(src.repo));
+      if (!r.entries.length) throw Object.assign(new Error(`No commits touched “${src.path || '/'}” on ${src.branch}. Check the branch and folder.`), { name: 'Empty' });
+      if (!r.latest?.graph) throw new Error('Terraform was found, but nothing in it could be read as an architecture yet. Cloud Canvas understands module-based Terraform.');
+      const nm = existing.includes(src.repo.toLowerCase()) ? `${src.repo}-${existing.filter((x) => x.startsWith(src.repo.toLowerCase())).length + 1}` : src.repo;
+      const now = Date.now();
+      const p: Project = { id, name: nm, description: `Follows ${src.owner}/${src.repo}${src.path ? ' · ' + src.path : ''}`, createdAt: now, updatedAt: now, graph: r.latest.graph, source: { ...src, head: headOf(r.entries[0]), syncedAt: now } };
+      if (rf.token) setToken(id, rf.token);
+      await repo.save(p);
+      onClose();
+      goProject(p.id);
+      setTimeout(reset, 300);
+    } catch (err) {
+      setRerr(describeError(err));
+      setBusy(false);
+    }
   };
 
   const recommended = TEMPLATES.filter((t) => t.recommended);
@@ -58,11 +87,27 @@ export function CreateProject({ open, onClose, existing }: { open: boolean; onCl
   };
 
   return (
-    <Modal open={open} onClose={close} width={step === 1 ? 480 : 1040}>
-      {step === 1 ? (
+    <Modal open={open} onClose={close} width={step === 2 ? 1040 : 480}>
+      {step === 'repo' ? (
+        <form onSubmit={connectRepo} style={{ padding: 24 }}>
+          <h2 style={{ margin: '0 0 4px', fontSize: 18 }}>Connect a GitHub repo</h2>
+          <p style={{ margin: '0 0 18px', color: 'var(--muted)', lineHeight: 1.5 }}>Cloud Canvas reads the Terraform in your repo and draws it. Every commit becomes a version you can browse and compare. Nothing is written back.</p>
+          <RepoForm value={rf} onChange={setRf} />
+          {rerr && <div data-testid="connect-error" style={{ display: 'flex', gap: 10, marginTop: 14, padding: 12, borderRadius: 10, background: 'color-mix(in srgb, var(--err) 12%, transparent)', lineHeight: 1.45 }}><AlertTriangle size={17} style={{ color: 'var(--err)', flex: 'none', marginTop: 1 }} /><div>{rerr.message}</div></div>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
+            <button type="button" className="btn" onClick={() => { setStep(1); setRerr(null); }} disabled={busy}><ArrowLeft size={14} /> Back</button>
+            <button className="btn primary" data-testid="repo-connect" disabled={busy || !repoValid(rf)}>{busy ? <><Loader2 size={14} className="spin" /> Reading repository…</> : <>Connect and create <ArrowRight size={14} /></>}</button>
+          </div>
+        </form>
+      ) : step === 1 ? (
         <form onSubmit={(e) => { e.preventDefault(); setTouched(true); if (!nameErr) setStep(2); }} style={{ padding: 24 }}>
           <h2 style={{ margin: '0 0 4px', fontSize: 18 }}>Create project</h2>
-          <p style={{ margin: '0 0 20px', color: 'var(--muted)' }}>Name your project, then pick a starting architecture.</p>
+          <p style={{ margin: '0 0 16px', color: 'var(--muted)' }}>Name your project, then pick a starting architecture.</p>
+          <button type="button" data-testid="from-repo" onClick={() => setStep('repo')} style={{ all: 'unset', boxSizing: 'border-box', cursor: 'pointer', width: '100%', display: 'flex', gap: 12, alignItems: 'center', padding: '12px 14px', borderRadius: 12, border: '1.5px dashed var(--accent)', background: 'var(--accent-soft)', marginBottom: 18 }}>
+            <GitBranch size={20} style={{ color: 'var(--accent)', flex: 'none' }} />
+            <div><b style={{ fontSize: 13.5 }}>Connect a GitHub repo</b><div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 2, lineHeight: 1.4 }}>Follow a Terraform repo. The diagram stays in step with every commit (read-only).</div></div>
+            <ArrowRight size={15} style={{ marginLeft: 'auto', color: 'var(--accent)' }} />
+          </button>
           <label style={{ display: 'block', marginBottom: 16 }}>
             <span style={label}>Name <span style={{ color: 'var(--err)' }}>*</span></span>
             <input autoFocus data-testid="project-name" style={{ ...field, borderColor: touched && nameErr ? 'var(--err)' : 'var(--line)' }} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Member Portal" maxLength={60} />

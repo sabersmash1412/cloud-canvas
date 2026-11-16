@@ -137,3 +137,20 @@ describe('import: project name and prefix', () => {
     expect(compile(graph).files[0].content).toContain('name                       = "orders"');
   });
 });
+
+describe('import: layout', () => {
+  it('services that share a subnet are placed side by side, never on top of each other', async () => {
+    const g = TEMPLATES.find((t) => t.id === 'ecs-cluster')!.build(meta);
+    // an internal ALB lives in the private subnet with the service
+    g.nodes.find((n) => n.id === 'alb')!.properties.internal = true;
+    g.nodes.find((n) => n.id === 'alb')!.parentId = 'vpc1-private-a';
+    expect(compile(g).ok).toBe(true);
+    const { graph } = await importTerraform(files(g), { parse });
+    const inSub = graph.nodes.filter((n) => n.parentId === 'vpc1-private-a');
+    expect(inSub.length).toBeGreaterThanOrEqual(2);
+    const xs = inSub.map((n) => n.position.x).sort((a, b) => a - b);
+    for (let i = 1; i < xs.length; i++) expect(xs[i] - xs[i - 1]).toBeGreaterThanOrEqual(100); // a node is 96px wide
+    // and they still fit inside a default-width subnet (400px)
+    expect(Math.max(...xs) + 96).toBeLessThanOrEqual(400);
+  });
+});

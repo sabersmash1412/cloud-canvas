@@ -186,7 +186,6 @@ export async function importTerraform(files: TfFile[], opts: ImportOptions): Pro
     return zs[k % Math.max(1, zs.length)];
   };
 
-  const placed: Record<string, number> = {};
   let freeY = 0;
   const vpcRight = nodes.filter((n) => n.type === 'aws.vpc').reduce((m, v) => Math.max(m, (v.size?.w ?? 0) + 60), 0);
 
@@ -207,14 +206,12 @@ export async function importTerraform(files: TfFile[], opts: ImportOptions): Pro
       const tierAttr = refs.find((r) => vpcIdByLabel.has(r.label) && /^(public|private|database)_subnets$|^database_subnet_group_name$/.test(r.attr));
       const tier: Tier | undefined = tierAttr ? (tierAttr.attr.startsWith('public') ? 'public' : tierAttr.attr.startsWith('database') ? 'database' : 'private') : def.tier;
       if (vpcId && tier) {
-        const k = (placed[`${vpcId}/${tier}`] = (placed[`${vpcId}/${tier}`] ?? -1) + 1);
         const sn = subnetFor(vpcId, tier, 0);
         if (sn) {
+          // services in the same subnet sit side by side, left to right
           const kids = nodes.filter((n) => n.parentId === sn.id).length;
           node.parentId = sn.id;
-          node.position = { x: inSubnetPos().x - (kids ? 0 : 0) + kids * 110 - Math.min(kids, 1) * 110, y: inSubnetPos().y };
-          node.position.x = Math.max(8, inSubnetPos().x - 55 * Math.min(kids, 2) + kids * 110 - kids * 55);
-          void k;
+          node.position = { x: 16 + kids * 112, y: inSubnetPos().y };
         }
       }
       if (!node.parentId) {

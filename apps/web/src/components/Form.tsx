@@ -34,6 +34,7 @@ export function NodeForm({ id }: { id: string }) {
   const node = useStore((s) => s.nodes.find((n) => n.id === id));
   const all = useStore((s) => s.diagnostics);
   const [open, setOpen] = useState(true);
+  const ro = useStore((s) => s.readOnly);
   if (!node) return null;
   const def = CATALOG[node.data.type];
   const diags = all.filter((d) => d.nodeId === id && d.severity !== 'info');
@@ -46,14 +47,15 @@ export function NodeForm({ id }: { id: string }) {
       <button onClick={() => setOpen(!open)} style={{ all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '10px 0', fontWeight: 600, fontSize: 14 }}>
         <ChevronDown size={16} style={{ transform: open ? undefined : 'rotate(-90deg)', transition: 'transform .15s' }} /> Main parameters
       </button>
-      {open && def.fields.map((f) => <Field key={f.key} f={f} value={node.data.properties[f.key] ?? f.default} onChange={(v) => setProp(node.id, f.key, v)} />)}
+      {open && <fieldset disabled={ro} style={{ border: 0, padding: 0, margin: 0, opacity: ro ? 0.75 : 1 }}>{def.fields.map((f) => <Field key={f.key} f={f} value={node.data.properties[f.key] ?? f.default} onChange={(v) => setProp(node.id, f.key, v)} />)}</fieldset>}
     </div>
   );
 }
 
 export function DeleteNode({ id }: { id: string }) {
   const node = useStore((s) => s.nodes.find((n) => n.id === id));
-  if (!node) return null;
+  const ro = useStore((s) => s.readOnly);
+  if (!node || ro) return null;
   const def = CATALOG[node.data.type];
   const nested = useStore.getState().nodes.filter((n) => n.parentId === id).length;
   return (

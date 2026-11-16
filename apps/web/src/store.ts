@@ -5,7 +5,7 @@ import {
   type Diagnostic, type Graph, type GraphNode, type ProjectMeta, type Props, type Tier,
 } from '@cloudcanvas/compiler';
 
-export type CNode = Node<{ type: string; properties: Props; label?: string; extras?: Record<string, unknown> }>;
+export type CNode = Node<{ type: string; properties: Props; label?: string; extras?: Record<string, unknown>; change?: 'added' | 'changed' | 'removed' }>;
 export type CEdge = Edge;
 
 const CONTAINER_KIND: Record<string, string> = { 'aws.vpc': 'vpc', 'aws.subnet': 'subnet' };
@@ -19,6 +19,8 @@ interface State extends Snap {
   selected: string | null;
   diagnostics: Diagnostic[];
   notice: string | null;
+  /** repo-linked projects: the canvas can be inspected but never changed */
+  readOnly: boolean;
   setDiagnostics: (d: Diagnostic[]) => void;
   connectingFrom: string | null; // node type
   dark: boolean;
@@ -42,6 +44,7 @@ interface State extends Snap {
   clear: () => void;
   toggleDark: () => void;
   setView: (v: State['view']) => void;
+  setReadOnly: (v: boolean) => void;
 }
 
 let seq = 1;
@@ -153,10 +156,12 @@ export const useStore = create<State>((set, get) => ({
   selected: null,
   diagnostics: [],
   notice: null,
+  readOnly: false,
   setDiagnostics: (diagnostics) => set({ diagnostics }),
   connectingFrom: null,
   dark: typeof localStorage !== 'undefined' ? localStorage.getItem('cc-dark') !== '0' : true,
   view: 'split',
+  setReadOnly: (readOnly) => set({ readOnly }),
 
   say: (notice) => {
     set({ notice });
@@ -166,10 +171,11 @@ export const useStore = create<State>((set, get) => ({
 
   checkpoint: () => set((s) => ({ past: [...s.past.slice(-80), snapOf(s)], future: [] })),
 
-  setProject: (p) => { get().checkpoint(); set((s) => ({ project: { ...s.project, ...p } })); },
+  setProject: (p) => { if (get().readOnly) return; get().checkpoint(); set((s) => ({ project: { ...s.project, ...p } })); },
 
   onNodesChange: (changes) =>
     set((s) => {
+      if (s.readOnly) changes = changes.filter((c) => c.type === 'dimensions' || c.type === 'select');
       const removals = changes.filter((c) => c.type === 'remove').map((c) => (c as { id: string }).id);
       let nodes = applyNodeChanges(changes, s.nodes);
       let edges = s.edges;
@@ -187,11 +193,13 @@ export const useStore = create<State>((set, get) => ({
 
   onEdgesChange: (changes) =>
     set((s) => {
+      if (s.readOnly) changes = changes.filter((c) => c.type === 'select');
       const removing = changes.some((c) => c.type === 'remove');
       return { edges: applyEdgeChanges(changes, s.edges), ...(removing ? { past: [...s.past.slice(-80), snapOf(s)], future: [] } : {}) };
     }),
 
   addNode: (type, pos) => {
+    if (get().readOnly) return null;
     const def = CATALOG[type];
     if (!def) return null;
     const s = get();
@@ -281,12 +289,14 @@ export const useStore = create<State>((set, get) => ({
   },
 
   startDrag: (id) => {
+    if (get().readOnly) return;
     const n = get().nodes.find((x) => x.id === id);
     dragOrigin = n ? { id, parentId: n.parentId, position: { ...n.position } } : null;
   },
 
   /** After a drag: re-home a service into the subnet it was dropped on (or snap back). */
   dropNode: (id) => {
+    if (get().readOnly) return;
     const s = get();
     const n = s.nodes.find((x) => x.id === id);
     const origin = dragOrigin?.id === id ? dragOrigin : null;
@@ -309,18 +319,21 @@ export const useStore = create<State>((set, get) => ({
   },
 
   addEdge: (source, target) => {
+    if (get().readOnly) return;
     const s = get();
     if (s.edges.some((e) => e.source === source && e.target === target)) return;
     set({ edges: [...s.edges, { id: nid('e'), source, target, type: 'cc' }], past: [...s.past.slice(-80), snapOf(s)], future: [] });
   },
 
-  setProp: (id, key, value) =>
+  setProp: (id, key, value) => {
+    if (get().readOnly) return;
     set((s) => ({
       nodes: s.nodes.map((n) => (n.id === id ? { ...n, data: { ...n.data, properties: { ...n.data.properties, [key]: value } } } : n)),
       past: s.past.length && s.future.length === 0 && lastProp === `${id}.${key}` ? s.past : [...s.past.slice(-80), snapOf(s)],
       future: [],
       ...((lastProp = `${id}.${key}`), {}),
-    })),
+    }));
+  },
 
   select: (selected) =>
     set((s) => {
@@ -329,12 +342,12 @@ export const useStore = create<State>((set, get) => ({
     }),
   setConnecting: (connectingFrom) => set({ connectingFrom }),
 
-  undo: () => { const s = get(); const p = s.past.at(-1); if (!p) return; set({ ...p, past: s.past.slice(0, -1), future: [snapOf(s), ...s.future], selected: null }); lastProp = ''; },
-  redo: () => { const s = get(); const f = s.future[0]; if (!f) return; set({ ...f, future: s.future.slice(1), past: [...s.past, snapOf(s)], selected: null }); lastProp = ''; },
+  undo: () => { if (get().readOnly) return; const s = get(); const p = s.past.at(-1); if (!p) return; set({ ...p, past: s.past.slice(0, -1), future: [snapOf(s), ...s.future], selected: null }); lastProp = ''; },
+  redo: () => { if (get().readOnly) return; const s = get(); const f = s.future[0]; if (!f) return; set({ ...f, future: s.future.slice(1), past: [...s.past, snapOf(s)], selected: null }); lastProp = ''; },
 
-  load: (g) => { const s = get(); const { nodes, edges } = fromGraph(g); set({ nodes, edges, passthrough: g.passthrough, project: g.project, selected: null, past: [...s.past.slice(-80), snapOf(s)], future: [] }); },
+  load: (g) => { if (get().readOnly) return; const s = get(); const { nodes, edges } = fromGraph(g); set({ nodes, edges, passthrough: g.passthrough, project: g.project, selected: null, past: [...s.past.slice(-80), snapOf(s)], future: [] }); },
   openGraph: (g) => { const { nodes, edges, passthrough } = fromGraph(g); lastProp = ''; set({ nodes, edges, passthrough, project: g.project, selected: null, past: [], future: [], diagnostics: [], notice: null }); },
-  clear: () => { const s = get(); set({ nodes: [], edges: [], selected: null, past: [...s.past.slice(-80), snapOf(s)], future: [] }); },
+  clear: () => { if (get().readOnly) return; const s = get(); set({ nodes: [], edges: [], selected: null, past: [...s.past.slice(-80), snapOf(s)], future: [] }); },
 
   toggleDark: () => set((s) => { try { localStorage.setItem('cc-dark', s.dark ? '0' : '1'); } catch { /* ignore */ } return { dark: !s.dark }; }),
   setView: (view) => set({ view }),

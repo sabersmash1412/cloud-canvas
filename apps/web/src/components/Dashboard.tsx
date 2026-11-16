@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Cloud, Copy, Download, FileInput, FolderPlus, LayoutGrid, MoreHorizontal, Moon, Pencil, Plus, Search, Sun, Trash2 } from 'lucide-react';
+import { Cloud, Copy, Download, FileInput, FolderPlus, GitBranch, LayoutGrid, MoreHorizontal, Moon, Pencil, Plus, Search, Sun, Trash2 } from 'lucide-react';
 import { ago, newId, repo, type Project } from '../projects';
 import { goProject } from '../router';
 import { useStore } from '../store';
@@ -160,12 +160,19 @@ function Card({ p, i, onRename, onDelete, onDuplicate }: { p: Project; i: number
             { label: 'Delete', icon: <Trash2 size={14} />, onClick: onDelete, danger: true },
           ]} />
         </div>
-        <div style={{ color: 'var(--muted)', fontSize: 12.5, lineHeight: 1.4, minHeight: 35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.description || 'No description'}</div>
+        {p.source ? (
+          <div data-testid="card-repo" style={{ minHeight: 35, fontSize: 12.5, lineHeight: 1.4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent)', fontWeight: 500 }}><GitBranch size={13} />{p.source.owner}/{p.source.repo}<span className="mono" style={{ color: 'var(--muted)', fontWeight: 400 }}>{p.source.branch}</span></div>
+            <div style={{ color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.source.head ? `${p.source.head.message}` : 'Not synced yet'}</div>
+          </div>
+        ) : (
+          <div style={{ color: 'var(--muted)', fontSize: 12.5, lineHeight: 1.4, minHeight: 35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.description || 'No description'}</div>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--muted)', fontSize: 11.5, marginTop: 'auto', paddingTop: 6 }}>
           <span className="kbd">{p.graph.project.environment}</span>
           <span className="mono">{p.graph.project.region}</span>
           <span>·</span><span>{count} resource{count === 1 ? '' : 's'}</span>
-          <span style={{ marginLeft: 'auto' }}>{ago(p.updatedAt)}</span>
+          <span style={{ marginLeft: 'auto' }}>{p.source?.head ? ago(new Date(p.source.head.date).getTime()) : ago(p.updatedAt)}</span>
         </div>
       </div>
     </motion.div>
